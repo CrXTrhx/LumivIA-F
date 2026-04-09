@@ -17,11 +17,11 @@ import { Bar, BarChart, Cell, Line, LineChart, Pie, PieChart, XAxis, YAxis } fro
 import { INITIAL_GOVERNANCE_STATE, nextGovernanceState } from "@/lib/dashboard-simulator"
 import { AbstractBackground } from "@/components/ui/abstract-background"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+import { ROUTE_DETAILS, type DriverRecord, type RouteKey } from "@/lib/drivers"
 
 const DASHBOARD_MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN_DASHBOARD || ""
 
 type Coordinate = [number, number]
-type RouteKey = "traditional" | "safe" | "express"
 type CongestionLevel = "unknown" | "low" | "moderate" | "heavy" | "severe"
 
 const mapCenter: Coordinate = [-99.1603, 19.4188]
@@ -81,14 +81,45 @@ const hazardEvents = [
   },
 ]
 
-const carProfiles = [
-  { id: "LUM-204", color: "#94a3b8", speed: 0.019, start: 0 },
-  { id: "LUM-311", color: "#cbd5e1", speed: 0.0165, start: 0 },
-  { id: "LUM-187", color: "#93c5fd", speed: 0.0155, start: 0 },
-]
-
-const vehicleRouteAssignments: RouteKey[] = ["safe", "traditional", "express"]
 const CAR_HEADING_OFFSET = -90
+
+interface VehicleProfile {
+  id: string
+  code: string
+  name: string
+  color: string
+  routeKey: RouteKey
+  speed: number
+  start: number
+}
+
+function buildVehicleProfiles(drivers: DriverRecord[]): VehicleProfile[] {
+  const active = drivers.filter((driver) => driver.status !== "completed")
+  return active.slice(0, 18).map((driver, index) => {
+    const routeBaseSpeed: Record<RouteKey, number> = {
+      safe: 0.015,
+      traditional: 0.0138,
+      express: 0.0162,
+    }
+    const reliabilityFactor = 1 + (driver.performance.punctualityRate - 80) / 800
+    const speed = Math.max(0.011, routeBaseSpeed[driver.routeKey] * reliabilityFactor - index * 0.00022)
+    return {
+      id: driver.id,
+      code: driver.code,
+      name: driver.fullName,
+      color: driver.unitColor,
+      routeKey: driver.routeKey,
+      speed,
+      start: ((index * 0.12) % 0.78),
+    }
+  })
+}
+
+function routeBadgeClasses(routeKey: RouteKey): string {
+  if (routeKey === "safe") return "text-cyan-200 bg-cyan-500/15 border-cyan-400/35"
+  if (routeKey === "traditional") return "text-slate-200 bg-slate-500/15 border-slate-400/35"
+  return "text-emerald-200 bg-emerald-500/15 border-emerald-400/35"
+}
 
 const mapboxDarkStyle = "mapbox://styles/mapbox/dark-v11"
 
@@ -553,7 +584,13 @@ async function fetchMatchedRoute(routeCoords: Coordinate[]): Promise<Coordinate[
   }
 }
 
-function DashboardMap({ onNavigationUpdate }: { onNavigationUpdate?: (payload: NavigationUpdate) => void }) {
+function DashboardMap({
+  vehicleProfiles,
+  onNavigationUpdate,
+}: {
+  vehicleProfiles: VehicleProfile[]
+  onNavigationUpdate?: (payload: NavigationUpdate) => void
+}) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
   const staticMarkersRef = useRef<mapboxgl.Marker[]>([])
@@ -561,8 +598,8 @@ function DashboardMap({ onNavigationUpdate }: { onNavigationUpdate?: (payload: N
   const carMarkerElementsRef = useRef<HTMLDivElement[]>([])
   const animationRef = useRef<number | null>(null)
   const lastFrameRef = useRef<number | null>(null)
-  const progressRef = useRef<number[]>(carProfiles.map((car) => car.start))
-  const completedCarsRef = useRef<boolean[]>(carProfiles.map(() => false))
+  const progressRef = useRef<number[]>([])
+  const completedCarsRef = useRef<boolean[]>([])
   const routeCoordinatesRef = useRef<Record<RouteKey, Coordinate[]>>({
     traditional: fallbackTraditionalRoute,
     safe: fallbackSafeRoute,
@@ -573,7 +610,7 @@ function DashboardMap({ onNavigationUpdate }: { onNavigationUpdate?: (payload: N
     safe: createRouteTrack(fallbackSafeRoute),
     express: createRouteTrack(fallbackExpressRoute),
   })
-  const vehicleStateRef = useRef<Array<{ position: Coordinate; bearing: number } | null>>(carProfiles.map(() => null))
+  const vehicleStateRef = useRef<Array<{ position: Coordinate; bearing: number } | null>>([])
 
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return
@@ -662,7 +699,9 @@ function DashboardMap({ onNavigationUpdate }: { onNavigationUpdate?: (payload: N
           safe: createRouteTrack(safeRoute),
           express: createRouteTrack(expressRoute),
         }
-        completedCarsRef.current = carProfiles.map(() => false)
+        progressRef.current = vehicleProfiles.map((vehicle) => vehicle.start)
+        completedCarsRef.current = vehicleProfiles.map(() => false)
+        vehicleStateRef.current = vehicleProfiles.map(() => null)
 
         addRouteLayer(map, "traditional-route", traditionalRoute, "#4b5563", 5, 0.6)
         addRouteLayer(map, "safe-route", safeRoute, "#60a5fa", 7, 0.88)
@@ -679,20 +718,23 @@ function DashboardMap({ onNavigationUpdate }: { onNavigationUpdate?: (payload: N
           staticMarkersRef.current.push(new mapboxgl.Marker({ element: markerEl }).setLngLat(event.coords).setPopup(popup).addTo(map))
         })
 
-        carProfiles.forEach((car, index) => {
+        const safeVehicleIndex = vehicleProfiles.findIndex((vehicle) => vehicle.routeKey === "safe")
+
+        vehicleProfiles.forEach((car, index) => {
           const markerEl = document.createElement("div")
           markerEl.className = "car-marker"
           markerEl.style.setProperty("--car-color", car.color)
           markerEl.innerHTML = `
-            <span class="truck-trailer"></span>
+            <span class="truck-body"></span>
+            <span class="truck-chassis"></span>
             <span class="truck-cab"></span>
-            <span class="truck-window"></span>
+            <span class="truck-windshield"></span>
             <span class="car-wheel car-wheel-front"></span>
             <span class="car-wheel car-wheel-mid"></span>
             <span class="car-wheel car-wheel-back"></span>
-            <span class="car-marker-id">${index + 1}</span>
+            <span class="car-marker-id">${car.code.replace("LUM-", "")}</span>
           `
-          const routeKey = vehicleRouteAssignments[index] || "safe"
+          const routeKey = car.routeKey
           const routeLabelByKey: Record<RouteKey, string> = {
             safe: "ruta segura",
             traditional: "ruta tradicional",
@@ -706,7 +748,7 @@ function DashboardMap({ onNavigationUpdate }: { onNavigationUpdate?: (payload: N
           const routeLabel = routeLabelByKey[routeKey]
           const routeEmission = routeEmissionByKey[routeKey]
           const popup = new mapboxgl.Popup({ offset: 12 }).setHTML(
-            `<strong>Unidad ${car.id}</strong><p style="margin-top:4px">Seguimiento en ${routeLabel}</p><p style="margin-top:4px">CO₂ estimado: ${routeEmission} g</p>`,
+            `<strong>${car.name}</strong><p style="margin-top:4px">Unidad ${car.code}</p><p style="margin-top:4px">Seguimiento en ${routeLabel}</p><p style="margin-top:4px">CO₂ estimado: ${routeEmission} g</p>`,
           )
           const routeTrack = routeTracksRef.current[routeKey]
           const initialPosition = positionOnTrack(routeTrack, progressRef.current[index])
@@ -745,11 +787,13 @@ function DashboardMap({ onNavigationUpdate }: { onNavigationUpdate?: (payload: N
           let latestSafePosition: Coordinate | null = null
           carMarkersRef.current.forEach((marker, idx) => {
             if (completedCarsRef.current[idx]) return
-            const routeKey = vehicleRouteAssignments[idx] || "safe"
+            const currentVehicle = vehicleProfiles[idx]
+            if (!currentVehicle) return
+            const routeKey = currentVehicle.routeKey
             const routeTrack = routeTracksRef.current[routeKey]
             const zoom = map.getZoom()
             const zoomSlowdown = Math.max(0.5, Math.min(1.06, 0.7 + (zoom - 13) * 0.06))
-            const nextProgress = Math.min(1, progressRef.current[idx] + carProfiles[idx].speed * zoomSlowdown * deltaSeconds)
+            const nextProgress = Math.min(1, progressRef.current[idx] + currentVehicle.speed * zoomSlowdown * deltaSeconds)
             progressRef.current[idx] = nextProgress
             const reachedDestination = nextProgress >= 1
             const targetPosition = reachedDestination
@@ -767,7 +811,7 @@ function DashboardMap({ onNavigationUpdate }: { onNavigationUpdate?: (payload: N
             marker.setLngLat(targetPosition)
             marker.setRotation(displayBearing)
             if (reachedDestination) completedCarsRef.current[idx] = true
-            if (routeKey === "safe" && idx === 0) latestSafePosition = targetPosition
+            if (routeKey === "safe" && (safeVehicleIndex < 0 || idx === safeVehicleIndex)) latestSafePosition = targetPosition
           })
           if (latestSafePosition) {
             const safeCoords = routeCoordinatesRef.current.safe
@@ -810,69 +854,77 @@ function DashboardMap({ onNavigationUpdate }: { onNavigationUpdate?: (payload: N
           animation: hazardPulse 1.8s infinite;
         }
         .car-marker {
-          width: calc(44px * var(--car-scale, 1));
-          height: calc(24px * var(--car-scale, 1));
+          width: calc(34px * var(--car-scale, 1));
+          height: calc(18px * var(--car-scale, 1));
           position: relative;
           transform-origin: 50% 50%;
           filter: drop-shadow(0 6px 14px rgba(2, 6, 23, 0.8));
         }
-        .truck-trailer {
+        .truck-body {
           position: absolute;
-          left: calc(2px * var(--car-scale, 1));
+          left: calc(4px * var(--car-scale, 1));
+          width: calc(17px * var(--car-scale, 1));
+          bottom: calc(4px * var(--car-scale, 1));
+          height: calc(10px * var(--car-scale, 1));
+          border-radius: calc(3px * var(--car-scale, 1));
+          background: linear-gradient(180deg, color-mix(in srgb, var(--car-color, #93c5fd) 75%, white), var(--car-color, #93c5fd));
+          border: 1px solid rgba(226, 232, 240, 0.72);
+        }
+        .truck-chassis {
+          position: absolute;
+          left: calc(4px * var(--car-scale, 1));
           width: calc(24px * var(--car-scale, 1));
-          bottom: calc(5px * var(--car-scale, 1));
-          height: calc(12px * var(--car-scale, 1));
-          border-radius: calc(4px * var(--car-scale, 1));
-          background: linear-gradient(180deg, color-mix(in srgb, var(--car-color, #93c5fd) 72%, white), var(--car-color, #93c5fd));
-          border: 1px solid rgba(226, 232, 240, 0.85);
-          box-shadow: inset 0 -2px 3px rgba(2, 6, 23, 0.35), inset 0 2px 2px rgba(255,255,255,0.25);
+          bottom: calc(3px * var(--car-scale, 1));
+          height: calc(2px * var(--car-scale, 1));
+          border-radius: 999px;
+          background: rgba(15, 23, 42, 0.85);
         }
         .truck-cab {
           position: absolute;
-          right: calc(2px * var(--car-scale, 1));
-          bottom: calc(5px * var(--car-scale, 1));
-          width: calc(14px * var(--car-scale, 1));
-          height: calc(13px * var(--car-scale, 1));
-          border-radius: calc(5px * var(--car-scale, 1)) calc(5px * var(--car-scale, 1)) calc(3px * var(--car-scale, 1)) calc(3px * var(--car-scale, 1));
-          background: linear-gradient(180deg, rgba(241, 245, 249, 0.95), rgba(203, 213, 225, 0.88));
+          right: calc(4px * var(--car-scale, 1));
+          bottom: calc(4px * var(--car-scale, 1));
+          width: calc(9px * var(--car-scale, 1));
+          height: calc(9px * var(--car-scale, 1));
+          border-radius: calc(3px * var(--car-scale, 1));
+          background: linear-gradient(180deg, rgba(241, 245, 249, 0.94), rgba(203, 213, 225, 0.82));
           border: 1px solid rgba(226, 232, 240, 0.85);
         }
-        .truck-window {
+        .truck-windshield {
           position: absolute;
-          right: calc(5px * var(--car-scale, 1));
-          bottom: calc(11px * var(--car-scale, 1));
-          width: calc(8px * var(--car-scale, 1));
-          height: calc(4px * var(--car-scale, 1));
-          border-radius: calc(2px * var(--car-scale, 1));
-          background: linear-gradient(180deg, rgba(186, 230, 253, 0.95), rgba(125, 211, 252, 0.85));
+          right: calc(6px * var(--car-scale, 1));
+          bottom: calc(8px * var(--car-scale, 1));
+          width: calc(5px * var(--car-scale, 1));
+          height: calc(3px * var(--car-scale, 1));
+          border-radius: calc(1.5px * var(--car-scale, 1));
+          background: linear-gradient(180deg, rgba(186, 230, 253, 0.95), rgba(125, 211, 252, 0.82));
         }
         .car-wheel {
           position: absolute;
-          bottom: 0;
-          width: calc(6px * var(--car-scale, 1));
-          height: calc(6px * var(--car-scale, 1));
+          bottom: calc(1px * var(--car-scale, 1));
+          width: calc(4px * var(--car-scale, 1));
+          height: calc(4px * var(--car-scale, 1));
           border-radius: 999px;
           background: #020617;
-          border: 1px solid rgba(148, 163, 184, 0.9);
+          border: 1px solid rgba(148, 163, 184, 0.82);
         }
-        .car-wheel-front { right: calc(6px * var(--car-scale, 1)); }
-        .car-wheel-mid { right: calc(18px * var(--car-scale, 1)); }
+        .car-wheel-front { right: calc(5px * var(--car-scale, 1)); }
+        .car-wheel-mid { right: calc(12px * var(--car-scale, 1)); }
         .car-wheel-back { left: calc(7px * var(--car-scale, 1)); }
         .car-marker::after {
           content: "";
           position: absolute;
-          inset: calc(-4px * var(--car-scale, 1));
+          inset: calc(-2px * var(--car-scale, 1));
           border-radius: 999px;
-          border: 1px solid color-mix(in srgb, var(--car-color, #93c5fd) 60%, transparent);
-          opacity: 0.65;
+          border: 1px solid color-mix(in srgb, var(--car-color, #93c5fd) 58%, transparent);
+          opacity: 0.55;
         }
         .car-marker-id {
           position: absolute;
-          top: calc(2px * var(--car-scale, 1));
-          left: calc(13px * var(--car-scale, 1));
+          top: calc(1px * var(--car-scale, 1));
+          left: calc(10px * var(--car-scale, 1));
           z-index: 1;
           color: #0f172a;
-          font-size: calc(9px * var(--car-scale, 1));
+          font-size: calc(6px * var(--car-scale, 1));
           font-weight: 800;
           line-height: 1;
         }
@@ -888,8 +940,9 @@ function DashboardMap({ onNavigationUpdate }: { onNavigationUpdate?: (payload: N
     return () => {
       if (animationRef.current) window.cancelAnimationFrame(animationRef.current)
       lastFrameRef.current = null
-      vehicleStateRef.current = carProfiles.map(() => null)
-      completedCarsRef.current = carProfiles.map(() => false)
+      vehicleStateRef.current = []
+      completedCarsRef.current = []
+      progressRef.current = []
       staticMarkersRef.current.forEach((marker) => marker.remove())
       carMarkersRef.current.forEach((marker) => marker.remove())
       staticMarkersRef.current = []
@@ -898,7 +951,7 @@ function DashboardMap({ onNavigationUpdate }: { onNavigationUpdate?: (payload: N
       map.remove()
       mapRef.current = null
     }
-  }, [onNavigationUpdate])
+  }, [onNavigationUpdate, vehicleProfiles])
 
   return (
     <div className="relative h-full w-full">
@@ -936,7 +989,8 @@ function MetricBlock({
   )
 }
 
-export function DashboardSection() {
+export function DashboardSection({ drivers }: { drivers: DriverRecord[] }) {
+  const vehicleProfiles = useMemo(() => buildVehicleProfiles(drivers), [drivers])
   const [currentTime, setCurrentTime] = useState(new Date())
   const [simulation, setSimulation] = useState(INITIAL_GOVERNANCE_STATE)
   const [kpiHistory, setKpiHistory] = useState<KpiHistoryPoint[]>([])
@@ -1040,7 +1094,7 @@ export function DashboardSection() {
 
         <div className="grid grid-cols-1 gap-4">
           <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <MetricBlock title="Vehiculos activos en ruta segura" value={String(simulation.activeVehicles)} unit="unidades" icon={Truck} />
+            <MetricBlock title="Vehiculos activos en ruta segura" value={String(vehicleProfiles.length)} unit="unidades" icon={Truck} />
             <MetricBlock title="Incidentes climaticos esquivados" value={String(simulation.avoidedIncidentsToday)} unit="eventos" icon={ShieldCheck} />
             <MetricBlock title="Retraso evitado estimado" value={String(simulation.delayAvoidedMin)} unit="min" icon={Timer} />
             <article className="glass-card rounded-2xl p-3 sm:p-4">
@@ -1054,9 +1108,9 @@ export function DashboardSection() {
             <main className="min-w-0 space-y-4">
               <section className="glass-panel rounded-3xl p-2">
                 <div className="relative h-[300px] min-h-[260px] overflow-hidden rounded-[22px] md:h-[360px] lg:h-[410px] xl:h-[460px]">
-                  <DashboardMap onNavigationUpdate={setNavigation} />
+                  <DashboardMap vehicleProfiles={vehicleProfiles} onNavigationUpdate={setNavigation} />
                   <div className="glass-card pointer-events-none absolute right-2 top-2 rounded-lg px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-slate-200 sm:right-4 sm:top-4 sm:px-3 sm:py-1.5 sm:text-xs sm:tracking-[0.22em]">
-                    3 carritos en seguimiento
+                    {vehicleProfiles.length} unidades en seguimiento
                   </div>
                 </div>
               </section>
@@ -1191,13 +1245,15 @@ export function DashboardSection() {
             <section className="glass-card rounded-2xl p-3 sm:p-4">
               <h3 className="font-display text-lg tracking-[0.14em] text-slate-100">FLOTA EN RUTA</h3>
               <div className="mt-3 space-y-2">
-                {carProfiles.map((car) => (
+                {vehicleProfiles.map((car) => (
                   <div key={car.id} className="glass-card flex min-w-0 items-center justify-between rounded-lg border-0 px-3 py-2 text-sm">
                     <p className="flex min-w-0 items-center gap-2 text-slate-200">
                       <Car className="h-4 w-4 flex-shrink-0 text-sky-400" />
-                      <span className="truncate">{car.id}</span>
+                      <span className="truncate">{car.code}</span>
                     </p>
-                    <span className="flex-shrink-0 text-xs uppercase tracking-[0.2em] text-slate-500">En camino</span>
+                    <span className={`flex-shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${routeBadgeClasses(car.routeKey)}`}>
+                      {ROUTE_DETAILS[car.routeKey].label}
+                    </span>
                   </div>
                 ))}
               </div>
