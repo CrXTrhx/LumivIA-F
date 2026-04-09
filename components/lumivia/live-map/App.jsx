@@ -2,7 +2,6 @@ import { useState, useCallback } from 'react';
 import LayerPanel from './LayerPanel';
 import TrafficFlowMap from './TrafficFlowMap';
 import ThemeToggle from './ThemeToggle';
-import SimulationToggle from './SimulationToggle';
 import FlowControls from './FlowControls';
 import RouteLayer from './RouteLayer';
 import FloodLayer from './FloodLayer';
@@ -10,9 +9,7 @@ import FloodLayer from './FloodLayer';
 export default function App() {
   const [activeLayer, setActiveLayer] = useState('traffic');
   const [mapTheme, setMapTheme] = useState('dark');
-  
-  // Modo global: true = simulación, false = backend real
-  const [isSimulation, setIsSimulation] = useState(true);
+  const isSimulation = true;
   
   // Referencia al mapa de Mapbox + estado para forzar re-render
   const [mapInstance, setMapInstance] = useState(null);
@@ -86,11 +83,6 @@ export default function App() {
       <ThemeToggle
         mapTheme={mapTheme}
         onThemeToggle={() => setMapTheme(prev => (prev === 'dark' ? 'light' : 'dark'))}
-      />
-      <SimulationToggle
-        isSimulation={isSimulation}
-        onToggle={() => setIsSimulation(prev => !prev)}
-        mapTheme={mapTheme}
       />
       <FlowControls
         activeLayer={activeLayer}
