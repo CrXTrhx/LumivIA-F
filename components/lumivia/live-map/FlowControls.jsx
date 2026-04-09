@@ -34,13 +34,14 @@ export default function FlowControls({
   // En móvil, posicionar arriba de la barra de capas (bottom ~90px)
   const containerStyle = {
     position: 'fixed',
-    left: isMobile ? 16 : 24,
+    left: isMobile ? 8 : 24,
     bottom: isMobile ? 90 : 24,
     display: 'flex',
     flexDirection: 'column',
     gap: 10,
     zIndex: 100,
-    maxWidth: isMobile ? 'calc(100vw - 32px)' : 'none',
+    width: isMobile ? 'calc(100vw - 16px)' : 'auto',
+    maxWidth: isMobile ? 'calc(100vw - 16px)' : 'none',
   };
 
   const cardStyle = {
@@ -50,7 +51,8 @@ export default function FlowControls({
     borderRadius: 12,
     padding: isMobile ? '10px 14px' : '14px 18px',
     border: isLight ? '1px solid rgba(0,0,0,0.08)' : '1px solid rgba(255,255,255,0.1)',
-    minWidth: isMobile ? 'auto' : 220,
+    minWidth: isMobile ? 0 : 220,
+    width: isMobile ? '100%' : 'auto',
   };
 
   const labelStyle = {

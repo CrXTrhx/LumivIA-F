@@ -903,7 +903,7 @@ function DashboardMap({ onNavigationUpdate }: { onNavigationUpdate?: (payload: N
   return (
     <div className="relative h-full w-full">
       <div ref={mapContainer} className="h-full w-full" />
-      <div className="pointer-events-none absolute left-6 top-5 rounded-md border border-slate-200/25 bg-slate-950/55 px-3 py-1.5 text-xs uppercase tracking-[0.24em] text-slate-200 backdrop-blur">
+      <div className="pointer-events-none absolute left-3 top-3 rounded-md border border-slate-200/25 bg-slate-950/55 px-2.5 py-1 text-[10px] uppercase tracking-[0.2em] text-slate-200 backdrop-blur sm:left-6 sm:top-5 sm:px-3 sm:py-1.5 sm:text-xs sm:tracking-[0.24em]">
         Tracking multi-route
       </div>
     </div>
@@ -1055,7 +1055,7 @@ export function DashboardSection() {
               <section className="glass-panel rounded-3xl p-2">
                 <div className="relative h-[300px] min-h-[260px] overflow-hidden rounded-[22px] md:h-[360px] lg:h-[410px] xl:h-[460px]">
                   <DashboardMap onNavigationUpdate={setNavigation} />
-                  <div className="glass-card pointer-events-none absolute right-4 top-4 rounded-lg px-3 py-1.5 text-xs uppercase tracking-[0.22em] text-slate-200">
+                  <div className="glass-card pointer-events-none absolute right-2 top-2 rounded-lg px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-slate-200 sm:right-4 sm:top-4 sm:px-3 sm:py-1.5 sm:text-xs sm:tracking-[0.22em]">
                     3 carritos en seguimiento
                   </div>
                 </div>
@@ -1089,7 +1089,7 @@ export function DashboardSection() {
                   <p className="text-xs uppercase tracking-[0.26em] text-slate-400">Operacion en tiempo real</p>
                   <p className="mt-1 text-xs text-slate-500">Vehiculos activos, retraso evitado e incidentes esquivados</p>
                   <ChartContainer
-                    className="mt-3 h-[230px] w-full"
+                    className="mt-3 h-[190px] w-full sm:h-[230px]"
                     config={{
                       Activos: { label: "Activos", color: "#60a5fa" },
                       Retraso: { label: "Retraso evitado", color: "#f59e0b" },
@@ -1111,7 +1111,7 @@ export function DashboardSection() {
                   <p className="text-xs uppercase tracking-[0.26em] text-slate-400">Mix de rutas (pastel)</p>
                   <p className="mt-1 text-xs text-slate-500">Proporción de viajes verdes vs tradicionales</p>
                   <ChartContainer
-                    className="mt-3 h-[230px] w-full"
+                    className="mt-3 h-[190px] w-full sm:h-[230px]"
                     config={{
                       verdes: { label: "Verdes", color: "#34d399" },
                       tradicionales: { label: "Tradicionales", color: "#64748b" },
@@ -1143,7 +1143,7 @@ export function DashboardSection() {
                 <p className="text-xs uppercase tracking-[0.26em] text-slate-400">Fuentes oficiales (barras dinamicas)</p>
                 <p className="mt-1 text-xs text-slate-500">Comparativo de precisión y latencia por API</p>
                 <ChartContainer
-                  className="mt-3 h-[220px] w-full"
+                  className="mt-3 h-[180px] w-full sm:h-[220px]"
                   config={{
                     precision: { label: "Precision", color: "#22d3ee" },
                     latenciaNorm: { label: "Latencia normalizada", color: "#f59e0b" },

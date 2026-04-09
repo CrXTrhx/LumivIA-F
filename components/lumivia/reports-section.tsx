@@ -104,14 +104,14 @@ export function ReportsSection() {
   }
 
   return (
-    <section className="relative mt-12 min-h-[calc(100vh-48px)] overflow-hidden text-slate-100">
+    <section className="relative mt-12 min-h-[calc(100vh-56px)] overflow-hidden text-slate-100">
       <div className="absolute inset-0">
         <div className="h-full w-full bg-[#060a14]" />
       </div>
       <div className="absolute inset-0 opacity-20">
         <div className="h-full w-full bg-[radial-gradient(ellipse_at_top,_rgba(59,130,246,0.25),_transparent_60%)]" />
       </div>
-      <div className="relative mx-auto max-w-4xl px-4 py-8 sm:px-6 pb-20">
+      <div className="relative mx-auto max-w-4xl px-4 pb-24 pt-6 sm:px-6 sm:pb-20 sm:pt-8">
         {/* Header */}
         <div className="glass-card-strong mb-6 rounded-2xl p-4 sm:mb-8 sm:p-5">
           <h2 className="font-display mb-2 text-2xl tracking-[0.12em] text-slate-100">Reportes ciudadanos</h2>
@@ -121,8 +121,8 @@ export function ReportsSection() {
         </div>
 
         {/* Search bar */}
-        <div className="flex gap-3 mb-6">
-          <div className="flex-1 relative">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row">
+          <div className="relative flex-1">
             <input
               type="text"
               value={searchQuery}
@@ -132,7 +132,7 @@ export function ReportsSection() {
             />
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#6b7280]" />
           </div>
-          <button className="bg-[#00e5c8] text-[#0a0f1a] px-6 py-3 rounded-xl font-sans font-medium text-sm hover:bg-[#00e5c8]/90 transition-colors">
+          <button className="rounded-xl bg-[#00e5c8] px-6 py-3 font-sans text-sm font-medium text-[#0a0f1a] transition-colors hover:bg-[#00e5c8]/90 sm:w-auto">
             Buscar
           </button>
         </div>
@@ -164,9 +164,9 @@ export function ReportsSection() {
                 key={report.id}
                 className={`glass-card rounded-xl border-l-4 p-4 ${severityColors[report.severity]} transition-colors`}
               >
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="font-mono text-sm text-slate-100">{report.street}</h3>
-                  <span className={`${typeColors[report.type].bg} ${typeColors[report.type].text} px-2 py-0.5 rounded text-xs font-mono uppercase tracking-widest`}>
+                <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <h3 className="font-mono text-sm text-slate-100 sm:max-w-[75%]">{report.street}</h3>
+                  <span className={`${typeColors[report.type].bg} ${typeColors[report.type].text} w-fit rounded px-2 py-0.5 text-xs font-mono uppercase tracking-widest`}>
                     {typeColors[report.type].label}
                   </span>
                 </div>
@@ -189,10 +189,11 @@ export function ReportsSection() {
       {/* Floating Action Button */}
       <button
         onClick={() => setShowModal(true)}
-        className="fixed bottom-6 right-6 bg-[#00e5c8] text-[#0a0f1a] px-5 py-3 rounded-full font-sans font-medium text-sm hover:bg-[#00e5c8]/90 transition-all hover:shadow-[0_0_20px_rgba(0,229,200,0.3)] flex items-center gap-2 z-40"
+        className="fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-full bg-[#00e5c8] px-4 py-3 font-sans text-sm font-medium text-[#0a0f1a] transition-all hover:bg-[#00e5c8]/90 hover:shadow-[0_0_20px_rgba(0,229,200,0.3)] sm:bottom-6 sm:right-6 sm:px-5"
       >
         <Plus className="w-5 h-5" />
-        Nuevo reporte
+        <span className="hidden sm:inline">Nuevo reporte</span>
+        <span className="sm:hidden">Reportar</span>
       </button>
 
       {/* New Report Modal */}
