@@ -593,6 +593,12 @@ function DashboardMap({
       maxPitch: 70,
     })
 
+    // Keep fleet markers visually anchored to routes.
+    // Disables camera angle changes that make markers feel detached.
+    map.dragRotate.disable()
+    map.touchZoomRotate.disableRotation()
+    map.keyboard.disableRotation()
+
     map.on("style.load", () => {
       void (async () => {
         add3DBuildingsLayer(map)
