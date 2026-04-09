@@ -128,13 +128,13 @@ export function MapLoadingScreen({ onComplete, duration = 2800 }: MapLoadingScre
       )}
     >
       <div
-        className="relative"
+        className="relative w-full px-4 sm:px-6"
         style={{
           transform: `scale(${zoom})`,
           transition: phase === 'zooming' ? 'transform 0.02s linear' : 'none'
         }}
       >
-        <div className="relative w-[900px] h-[600px] bg-[#0d1520] overflow-hidden rounded-lg border border-[#1f2937]">
+        <div className="relative mx-auto h-[220px] w-full max-w-[900px] bg-[#0d1520] overflow-hidden rounded-lg border border-[#1f2937] sm:h-[360px] md:h-[500px] lg:h-[600px]">
           <svg
             className="absolute inset-0 w-full h-full"
             viewBox="0 0 900 600"
@@ -273,7 +273,7 @@ export function MapLoadingScreen({ onComplete, duration = 2800 }: MapLoadingScre
         </div>
       </div>
       
-      <div className="mt-8 w-96">
+      <div className="mt-6 w-full max-w-96 px-4 sm:mt-8 sm:px-0">
         <div className="flex items-center justify-between mb-2">
           <span className="font-sans text-sm text-[#9ca3af]">
             Cargando datos urbanos de CDMX...
@@ -290,7 +290,7 @@ export function MapLoadingScreen({ onComplete, duration = 2800 }: MapLoadingScre
         </div>
       </div>
       
-      <div className="mt-6 flex items-center gap-3">
+      <div className="mt-5 flex items-center gap-3 px-4 text-center sm:mt-6 sm:px-0">
         <div className="w-2 h-2 rounded-full bg-[#00e5c8] animate-pulse" />
         <span className="font-sans text-sm text-[#6b7280]">
           {progress < 30 && "Inicializando mapas..."}

@@ -150,10 +150,12 @@ export default function ReportPanel({
 
   const containerStyle = {
     position: 'fixed',
-    right: isMobile ? 16 : 24,
+    right: isMobile ? 8 : 24,
     bottom: isMobile ? 90 : 24,
     zIndex: 200,
     fontFamily: 'Inter, system-ui, sans-serif',
+    width: isMobile ? 'calc(100vw - 16px)' : 'auto',
+    maxWidth: isMobile ? 'calc(100vw - 16px)' : 'none',
   };
 
   const panelStyle = {
@@ -164,7 +166,7 @@ export default function ReportPanel({
     border: isLight ? '1px solid rgba(0,0,0,0.08)' : '1px solid rgba(255,255,255,0.1)',
     boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
     overflow: 'hidden',
-    width: isMobile ? 280 : 320,
+    width: isMobile ? '100%' : 320,
     maxHeight: isExpanded ? (isMobile ? 400 : 500) : 'auto',
     transition: 'max-height 0.3s ease',
   };

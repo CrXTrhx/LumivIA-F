@@ -56,9 +56,9 @@ export default function LumivIADashboard() {
       {showMapBackButton && (
         <button
           onClick={() => handleTabChange("home")}
-          className="fixed left-3 top-3 z-[80] rounded-full border border-[#1e293b] bg-[#060a14]/90 px-4 py-2 text-sm backdrop-blur-xl transition-opacity hover:opacity-85"
+          className="fixed left-2 top-2 z-[80] max-w-[calc(100vw-16px)] rounded-full border border-[#1e293b] bg-[#060a14]/90 px-3 py-2 text-xs backdrop-blur-xl transition-opacity hover:opacity-85 sm:left-3 sm:top-3 sm:px-4 sm:text-sm"
         >
-          <span className="font-display text-base tracking-wider">
+          <span className="font-display text-sm tracking-wider sm:text-base">
             <span className="text-white">Lumiv</span>
             <span className="text-[#00d4aa]">IA</span>
           </span>
