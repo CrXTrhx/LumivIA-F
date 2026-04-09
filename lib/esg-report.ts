@@ -13,9 +13,52 @@ const C = {
   white: [255, 255, 255] as RGB,
 }
 
+interface EsgTemplateData {
+  empresa: string
+  ambito: string
+  periodo: string
+  estandar: string
+  proximo_reporte: string
+  resumen: {
+    alerta: string
+    tabla: Array<{ indicador: string; q1: string; q4: string; variacion: string }>
+  }
+  gobernanza: {
+    estructura: Array<{ elemento: string; estado: string }>
+    trazabilidad: Array<{ fuente: string; uso: string; precision: string; actualizacion: string }>
+    cumplimiento: Array<{ marco: string; aplicabilidad: string; estado: string }>
+  }
+  estrategia: {
+    riesgos: Array<{ horizonte: string; riesgo: string; probabilidad: string; impacto: string; mitigacion: string }>
+    oportunidades: string[]
+    simulacion: Array<{ parametro: string; resultado: string }>
+  }
+  riesgos: {
+    canales: string[]
+    evaluacion: string
+    acciones: Array<{ riesgo: string; accion: string; resultado: string }>
+  }
+  ambiental: {
+    scopes: Array<{ alcance: string; fuente: string; ton_co2e: string; vs_q4: string }>
+    contaminantes: Array<{ nombre: string; emitido: string; evitado: string; reduccion: string; metodo: string }>
+    kpis: Array<{ kpi: string; valor: string; benchmark: string; posicion: string }>
+    equivalencias: string[]
+  }
+  social: {
+    seguridad: Array<{ kpi: string; valor: string; benchmark: string; estado: string }>
+    exposicion_pm25: Array<{ nivel: string; umbral: string; conductores: string; porcentaje: string; accion: string }>
+    cita: string
+    diversidad: Array<{ indicador: string; valor: string; objetivo: string; estado: string }>
+  }
+  gobernanza_metricas: Array<{ indicador: string; valor: string }>
+  hoja_ruta: Array<{ horizonte: string; accion: string; responsable: string }>
+  glosario: Array<{ termino: string; definicion: string }>
+}
+
 export interface EsgInputData {
   drivers: DriverRecord[]
   simulation?: GovernanceSimulationState
+  templateJsonRaw?: string
 }
 
 type PdfDoc = {
@@ -24,12 +67,12 @@ type PdfDoc = {
   setTextColor: (...args: number[]) => any
   setFontSize: (size: number) => any
   setFont: (font: string, style: string) => any
-  text: (text: string, x: number, y: number, options?: any) => any
+  text: (text: string | string[], x: number, y: number, options?: any) => any
   setDrawColor: (...args: number[]) => any
   setLineWidth: (value: number) => any
   line: (...args: number[]) => any
   roundedRect: (...args: any[]) => any
-  splitTextToSize?: (text: string, width: number) => string[]
+  splitTextToSize: (text: string, width: number) => string[]
   output: (type: "arraybuffer") => ArrayBuffer
   addPage: () => any
   getNumberOfPages: () => number
@@ -59,6 +102,38 @@ function kpiCard(doc: PdfDoc, x: number, y: number, value: string, label: string
   doc.text(label, x + 19, y + 17, { align: "center", maxWidth: 34 })
 }
 
+function alertBox(doc: PdfDoc, y: number, text: string): number {
+  const lines = doc.splitTextToSize(text, 155)
+  const h = 10 + lines.length * 5
+  doc.setFillColor(...C.bg)
+  doc.setDrawColor(...C.secondary)
+  doc.setLineWidth(0.5)
+  doc.roundedRect(20, y, 170, h, 2, 2, "FD")
+  doc.setFillColor(...C.secondary)
+  doc.rect(20, y, 3, h, "F")
+  doc.setTextColor(...C.primary)
+  doc.setFontSize(8).setFont("helvetica", "bold")
+  doc.text("ALERTA Q1:", 27, y + 6)
+  doc.setFont("helvetica", "normal")
+  doc.setTextColor(...C.text)
+  doc.text(lines, 27, y + 12)
+  return y + h + 4
+}
+
+function equivalenceBox(doc: PdfDoc, y: number, lines: string[]) {
+  const h = 10 + lines.length * 6
+  doc.setFillColor(...C.bg)
+  doc.setDrawColor(...C.accent)
+  doc.setLineWidth(0.4)
+  doc.roundedRect(20, y, 170, h, 2, 2, "FD")
+  doc.setTextColor(...C.primary)
+  doc.setFontSize(8).setFont("helvetica", "bold")
+  doc.text("Equivalencias de ahorro LumivIA", 25, y + 7)
+  doc.setFont("helvetica", "normal")
+  doc.setTextColor(...C.text)
+  lines.forEach((line, i) => doc.text(line, 25, y + 13 + i * 6))
+}
+
 function addHeaderFooter(doc: PdfDoc, pageNum: number, totalPages: number) {
   doc.setFillColor(...C.primary)
   doc.rect(0, 0, 210, 12, "F")
@@ -84,36 +159,90 @@ function toDataUri(doc: PdfDoc): string {
   return `data:application/pdf;base64,${btoa(binary)}`
 }
 
-export async function buildEsgPdf({ drivers, simulation = INITIAL_GOVERNANCE_STATE }: EsgInputData): Promise<{
+function toBlob(dataUri: string): Blob {
+  const base64 = dataUri.split(",")[1] || ""
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  return new Blob([bytes], { type: "application/pdf" })
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+function buildMergedTemplate(
+  rawTemplate: string | undefined,
+  drivers: DriverRecord[],
+  simulation: GovernanceSimulationState,
+): EsgTemplateData {
+  const parsed = rawTemplate ? (JSON.parse(rawTemplate) as EsgTemplateData) : ({} as EsgTemplateData)
+  const totalTrips = drivers.reduce((acc, d) => acc + d.performance.completedTrips, 0)
+  const highPmDrivers = Math.max(3, Math.round(drivers.length * 0.12))
+  const avgPrecision = simulation.officialSources.reduce((acc, src) => acc + src.precisionPct, 0) / simulation.officialSources.length
+  const co2Avoided = Math.round(simulation.monthlyCo2SavedKg * 0.012 * 10) / 10
+  const co2Total = Math.round((co2Avoided / 0.109) * 10) / 10
+  const optimizedRoutes = Math.max(700, Math.round(totalTrips * 1.4))
+  const floodPoints = Math.max(30, simulation.avoidedIncidentsToday * 3)
+  const citizenReports = Math.max(120, Math.round(optimizedRoutes * 0.25))
+
+  return {
+    ...parsed,
+    empresa: parsed.empresa || "LumivIA – The 4 Ases",
+    ambito: parsed.ambito || "Ciudad de Mexico (CDMX)",
+    periodo: parsed.periodo || "Q1 2026 (Enero-Marzo 2026)",
+    estandar: parsed.estandar || "IFRS S1/S2 · GRI 305 · SASB Transporte",
+    proximo_reporte: parsed.proximo_reporte || "Julio 2026 (Q2)",
+    resumen: {
+      ...parsed.resumen,
+      alerta:
+        parsed.resumen?.alerta ||
+        "Se detectaron picos de PM2.5 en corredores críticos y se aplicaron redirecciones automáticas para reducir la exposición de conductores.",
+      tabla:
+        parsed.resumen?.tabla?.map((row) => ({ ...row })) || [],
+    },
+    gobernanza: parsed.gobernanza,
+    estrategia: parsed.estrategia,
+    riesgos: parsed.riesgos,
+    ambiental: parsed.ambiental,
+    social: parsed.social,
+    gobernanza_metricas: parsed.gobernanza_metricas,
+    hoja_ruta: parsed.hoja_ruta,
+    glosario: parsed.glosario,
+  }
+}
+
+export async function buildEsgPdf({
+  drivers,
+  simulation = INITIAL_GOVERNANCE_STATE,
+  templateJsonRaw,
+}: EsgInputData): Promise<{
   name: string
   pdfDataUri: string
+  pdfBlob: Blob
 }> {
   const [{ jsPDF }, autoTableModule] = await Promise.all([import("jspdf"), import("jspdf-autotable")])
   const autoTable = autoTableModule.default
   const doc = new jsPDF({ orientation: "p", unit: "mm", format: "a4" }) as unknown as PdfDoc
-  const today = new Date()
-  const dateLabel = today.toLocaleDateString("es-MX")
-  const timeLabel = today.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })
-  const reportName = `Reporte ESG Q1 2026 - ${dateLabel.replaceAll("/", "-")} ${timeLabel.replace(":", "-")}.pdf`
+  const data = buildMergedTemplate(templateJsonRaw, drivers, simulation)
 
-  const activeDrivers = drivers.filter((d) => d.status !== "completed").length
-  const avgPunctuality = Math.round(
-    drivers.reduce((acc, d) => acc + d.performance.punctualityRate, 0) / Math.max(1, drivers.length),
-  )
-  const avgHealthy = Math.round(
-    drivers.reduce((acc, d) => acc + d.performance.healthyRouteRate, 0) / Math.max(1, drivers.length),
-  )
-  const scope1 = Math.max(70, Math.round(simulation.monthlyCo2SavedKg * 0.065))
-  const scope2 = Math.max(35, Math.round(simulation.monthlyCo2SavedKg * 0.028))
-  const scope3 = Math.max(18, Math.round(simulation.monthlyCo2SavedKg * 0.016))
-  const totalCo2e = scope1 + scope2 + scope3
-  const co2Avoided = Math.round(simulation.monthlyCo2SavedKg * 0.012)
-  const reductionPct = Math.max(6, Math.round((co2Avoided / Math.max(1, totalCo2e)) * 1000) / 10)
-  const yoloPrecision = simulation.officialSources.reduce((acc, src) => acc + src.precisionPct, 0) / simulation.officialSources.length
-  const greenPct = Math.round((simulation.greenTripsToday / Math.max(1, simulation.totalTripsToday)) * 100)
-  const traceability = simulation.traceabilityPct
+  const now = new Date()
+  const dateLabel = now.toLocaleDateString("es-MX")
+  const timeLabel = now.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })
+  const fileName = `Reporte ESG Q1 2026 - ${dateLabel.replaceAll("/", "-")} ${timeLabel.replaceAll(":", "-")}.pdf`
 
-  // Portada
+  const avgPrecision = simulation.officialSources.reduce((acc, src) => acc + src.precisionPct, 0) / simulation.officialSources.length
+  const co2Avoided = Math.round(simulation.monthlyCo2SavedKg * 0.012 * 10) / 10
+  const co2Total = Math.round((co2Avoided / 0.109) * 10) / 10
+
+  // Página 1
   doc.setFillColor(...C.primary)
   doc.rect(0, 0, 210, 60, "F")
   doc.setTextColor(...C.white)
@@ -130,18 +259,17 @@ export async function buildEsgPdf({ drivers, simulation = INITIAL_GOVERNANCE_STA
   doc.setFontSize(16).setFont("helvetica", "normal")
   doc.setTextColor(...C.secondary)
   doc.text("LumivIA × IBM", 20, 92)
-  doc.setTextColor(...C.muted)
-  doc.setFontSize(10)
-  doc.text("Período: Q1 2026 (Enero-Marzo 2026)", 20, 102)
+  doc.setTextColor(...C.muted).setFontSize(10)
+  doc.text(`Período: ${data.periodo}`, 20, 102)
   autoTable(doc, {
     startY: 115,
     body: [
-      ["Empresa", "LumivIA – The 4 Ases"],
-      ["Ámbito", "Ciudad de México (CDMX)"],
-      ["Período", "Q1 2026 (Enero-Marzo 2026)"],
+      ["Empresa", data.empresa],
+      ["Ámbito", data.ambito],
+      ["Período", data.periodo],
       ["Fecha", `${dateLabel} ${timeLabel}`],
-      ["Marco", "IFRS S1/S2 · GRI 305 · SASB Transporte"],
-      ["Próx. reporte", "Julio 2026 (Q2)"],
+      ["Marco", data.estandar],
+      ["Próx. reporte", data.proximo_reporte],
     ],
     columnStyles: {
       0: { fontStyle: "bold", cellWidth: 45, fillColor: C.bg, textColor: C.primary },
@@ -153,32 +281,27 @@ export async function buildEsgPdf({ drivers, simulation = INITIAL_GOVERNANCE_STA
   })
   doc.setFillColor(...C.primary)
   doc.rect(0, 282, 210, 15, "F")
-  doc.setTextColor(...C.white)
-  doc.setFontSize(8).setFont("helvetica", "normal")
+  doc.setTextColor(...C.white).setFontSize(8).setFont("helvetica", "normal")
   doc.text("Confidencial – Para uso interno IBM y revisión de Comité ESG", 105, 291, { align: "center" })
 
   // Página 2
   doc.addPage()
   sectionTitle(doc, 18, "00 RESUMEN EJECUTIVO")
-  kpiCard(doc, 20, 35, `${totalCo2e.toFixed(1)} t`, "CO2e totales (Scope 1+2)")
+  kpiCard(doc, 20, 35, `${co2Total.toFixed(1)} t`, "CO2e totales (Scope 1+2)")
   kpiCard(doc, 62, 35, `-${co2Avoided.toFixed(1)} t`, "CO2e evitado por optimización")
-  kpiCard(doc, 104, 35, `-${reductionPct}%`, "Reducción vs ruta directa")
-  kpiCard(doc, 146, 35, `${yoloPrecision.toFixed(1)}%`, "Precisión modelo YOLOv8")
+  kpiCard(doc, 104, 35, "-10.9%", "Reducción vs ruta directa")
+  kpiCard(doc, 146, 35, `${avgPrecision.toFixed(1)}%`, "Precisión modelo YOLOv8")
   autoTable(doc, {
     startY: 65,
     head: [["Indicador clave", "Q1 2026", "Q4 2025", "Variación"]],
-    body: [
-      ["CO2e total (t)", totalCo2e.toFixed(1), (totalCo2e + 12.8).toFixed(1), "-7.8%"],
-      ["Rutas verdes (%)", `${greenPct}%`, `${Math.max(0, greenPct - 8)}%`, "+8 pp"],
-      ["Trazabilidad (%)", `${traceability}%`, `${Math.max(90, traceability - 3)}%`, "+3 pp"],
-      ["Puntualidad de flota (%)", `${avgPunctuality}%`, `${Math.max(70, avgPunctuality - 5)}%`, "+5 pp"],
-    ],
+    body: data.resumen.tabla.map((row) => [row.indicador, row.q1, row.q4, row.variacion]),
     headStyles: { fillColor: C.primary, textColor: C.white, fontStyle: "bold", fontSize: 9 },
     styles: { fontSize: 9, cellPadding: 3, textColor: C.text, font: "helvetica" },
     alternateRowStyles: { fillColor: C.bg },
     margin: { left: 20, right: 20 },
     columnStyles: { 0: { cellWidth: 90 }, 1: { cellWidth: 27 }, 2: { cellWidth: 27 }, 3: { cellWidth: 26 } },
   })
+  alertBox(doc, (doc as any).lastAutoTable.finalY + 6, data.resumen.alerta)
 
   // Página 3
   doc.addPage()
@@ -187,16 +310,24 @@ export async function buildEsgPdf({ drivers, simulation = INITIAL_GOVERNANCE_STA
   autoTable(doc, {
     startY: y,
     head: [["Elemento de gobernanza", "Estado Q1 2026"]],
-    body: [
-      ["Comité ESG inter-áreas", "Activo y sesionando semanalmente"],
-      ["Dashboard ejecutivo", "Operativo con métricas en tiempo real"],
-      ["Protocolo de incidentes", "Aplicado en 100% de eventos críticos"],
-    ],
+    body: data.gobernanza.estructura.map((r) => [r.elemento, r.estado]),
     headStyles: { fillColor: C.primary, textColor: C.white },
     styles: { fontSize: 9, cellPadding: 3, textColor: C.text, font: "helvetica" },
     alternateRowStyles: { fillColor: C.bg },
     columnStyles: { 0: { cellWidth: 100 }, 1: { cellWidth: 70 } },
     margin: { left: 20, right: 20 },
+  })
+  y = (doc as any).lastAutoTable.finalY + 6
+  y = sectionTitle(doc, y, "1.2 Trazabilidad de datos")
+  autoTable(doc, {
+    startY: y,
+    head: [["Fuente de dato", "Uso en LumivIA", "Precisión", "Actualización"]],
+    body: data.gobernanza.trazabilidad.map((r) => [r.fuente, r.uso, r.precision, r.actualizacion]),
+    headStyles: { fillColor: C.primary, textColor: C.white, fontSize: 8 },
+    styles: { fontSize: 8, cellPadding: 2.5, textColor: C.text, font: "helvetica" },
+    alternateRowStyles: { fillColor: C.bg },
+    margin: { left: 20, right: 20 },
+    columnStyles: { 0: { cellWidth: 45 }, 1: { cellWidth: 65 }, 2: { cellWidth: 30 }, 3: { cellWidth: 30 } },
   })
 
   // Página 4
@@ -205,42 +336,38 @@ export async function buildEsgPdf({ drivers, simulation = INITIAL_GOVERNANCE_STA
   autoTable(doc, {
     startY: y,
     head: [["Horizonte", "Riesgo identificado", "Prob.", "Impacto", "Mitigación LumivIA"]],
-    body: [
-      ["Corto", "Alta congestión en nodos urbanos", "Alta", "Alto", "Ruteo dinámico + predicción de tráfico"],
-      ["Corto", "Picos de PM2.5 por contingencia", "Media", "Alto", "Priorización de rutas verdes"],
-      ["Mediano", "Baja adopción operativa", "Media", "Medio", "Capacitación y KPIs de desempeño"],
-    ],
+    body: data.estrategia.riesgos.map((r) => [r.horizonte, r.riesgo, r.probabilidad, r.impacto, r.mitigacion]),
     headStyles: { fillColor: C.primary, textColor: C.white, fontSize: 8 },
-    styles: { fontSize: 8, cellPadding: 2.8, textColor: C.text, font: "helvetica" },
+    styles: { fontSize: 8, cellPadding: 2.6, textColor: C.text, font: "helvetica" },
     alternateRowStyles: { fillColor: C.bg },
     margin: { left: 20, right: 20 },
     columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 65 }, 2: { cellWidth: 15 }, 3: { cellWidth: 18 }, 4: { cellWidth: 50 } },
   })
-  doc.setTextColor(...C.text)
-  doc.setFontSize(9).setFont("helvetica", "normal")
-  doc.text("→ Optimización de ventanas logísticas con menor huella ambiental", 20, 108)
-  doc.text("→ Integración de trazabilidad para auditorías ESG", 20, 114)
-  doc.text("→ Simulación predictiva de impacto urbano (Watsonx)", 20, 120)
-  doc.text("→ Reducción de tiempo ocioso y emisiones por ralentí", 20, 126)
+  y = (doc as any).lastAutoTable.finalY + 6
+  sectionTitle(doc, y, "2.2 Oportunidades ESG")
+  data.estrategia.oportunidades.slice(0, 4).forEach((item, i) => {
+    const lines = doc.splitTextToSize(`→ ${item}`, 166)
+    doc.setFontSize(8.5).setTextColor(...C.text).setFont("helvetica", "normal")
+    doc.text(lines, 20, y + 16 + i * 12)
+  })
 
   // Página 5
   doc.addPage()
   y = sectionTitle(doc, 18, "PILAR 3 · GESTIÓN DE RIESGOS")
-  doc.setTextColor(...C.text)
-  doc.setFontSize(9)
-  doc.text("• Monitoreo en tiempo real de clima, congestión y eventos críticos", 20, y + 2)
-  doc.text("• Módulo ciudadano para detección temprana de incidentes", 20, y + 8)
-  doc.text("• Revisión mensual de umbrales y protocolos de respuesta", 20, y + 14)
+  data.riesgos.canales.slice(0, 3).forEach((item, i) => {
+    const lines = doc.splitTextToSize(`• ${item}`, 166)
+    doc.setFontSize(8.6).setTextColor(...C.text).setFont("helvetica", "normal")
+    doc.text(lines, 20, y + 2 + i * 11)
+  })
+  const evalLines = doc.splitTextToSize(data.riesgos.evaluacion, 166)
+  doc.setTextColor(...C.muted).setFontSize(8)
+  doc.text(evalLines, 20, y + 39)
   autoTable(doc, {
-    startY: y + 22,
+    startY: y + 60,
     head: [["Riesgo detectado", "Acción LumivIA", "Resultado Q1"]],
-    body: [
-      ["Congestión severa en corredor norte", "Rutas alternas en tiempo real", "Retraso evitado +186 min"],
-      ["Eventos de inundación puntual", "Bloqueo preventivo de segmentos", "Incidentes evitados +12"],
-      ["Baja trazabilidad de evidencia", "Hash y registro por evento", `Trazabilidad ${traceability}%`],
-    ],
+    body: data.riesgos.acciones.map((r) => [r.riesgo, r.accion, r.resultado]),
     headStyles: { fillColor: C.primary, textColor: C.white },
-    styles: { fontSize: 9, cellPadding: 3, textColor: C.text, font: "helvetica" },
+    styles: { fontSize: 8.6, cellPadding: 2.8, textColor: C.text, font: "helvetica" },
     alternateRowStyles: { fillColor: C.bg },
     margin: { left: 20, right: 20 },
     columnStyles: { 0: { cellWidth: 60 }, 1: { cellWidth: 65 }, 2: { cellWidth: 45 } },
@@ -252,24 +379,25 @@ export async function buildEsgPdf({ drivers, simulation = INITIAL_GOVERNANCE_STA
   autoTable(doc, {
     startY: y,
     head: [["Alcance", "Fuente", "Ton CO2e", "vs Q4 2025"]],
-    body: [
-      ["Scope 1", "Combustión móvil en flota", scope1.toFixed(1), "-6.4%"],
-      ["Scope 2", "Electricidad de operación", scope2.toFixed(1), "-5.1%"],
-      ["Scope 3", "Cadena logística parcial", scope3.toFixed(1), "-4.0%"],
-      ["TOTAL", "Consolidado Q1", totalCo2e.toFixed(1), "-5.9%"],
-    ],
+    body: data.ambiental.scopes.map((r) => [r.alcance, r.fuente, r.ton_co2e, r.vs_q4]),
     headStyles: { fillColor: C.primary, textColor: C.white },
-    styles: { fontSize: 9, cellPadding: 3, textColor: C.text, font: "helvetica" },
+    styles: { fontSize: 8.8, cellPadding: 2.8, textColor: C.text, font: "helvetica" },
     alternateRowStyles: { fillColor: C.bg },
     margin: { left: 20, right: 20 },
     columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 80 }, 2: { cellWidth: 25 }, 3: { cellWidth: 25 } },
-    didParseCell: (data) => {
-      if (data.row.index === 3) {
-        data.cell.styles.fontStyle = "bold"
-        data.cell.styles.textColor = C.primary
-      }
-    },
   })
+  y = (doc as any).lastAutoTable.finalY + 6
+  autoTable(doc, {
+    startY: y,
+    head: [["Contaminante", "Emitido Q1 (kg)", "Evitado (kg)", "Reducción", "Método"]],
+    body: data.ambiental.contaminantes.map((r) => [r.nombre, r.emitido, r.evitado, r.reduccion, r.metodo]),
+    headStyles: { fillColor: C.primary, textColor: C.white, fontSize: 8 },
+    styles: { fontSize: 8, cellPadding: 2.6, textColor: C.text, font: "helvetica" },
+    alternateRowStyles: { fillColor: C.bg },
+    margin: { left: 20, right: 20 },
+    columnStyles: { 0: { cellWidth: 25 }, 1: { cellWidth: 30 }, 2: { cellWidth: 30 }, 3: { cellWidth: 22 }, 4: { cellWidth: 63 } },
+  })
+  equivalenceBox(doc, (doc as any).lastAutoTable.finalY + 6, data.ambiental.equivalencias.slice(0, 3))
 
   // Página 7
   doc.addPage()
@@ -277,17 +405,23 @@ export async function buildEsgPdf({ drivers, simulation = INITIAL_GOVERNANCE_STA
   autoTable(doc, {
     startY: y,
     head: [["KPI", "Valor Q1 2026", "Benchmark", "Estado"]],
-    body: [
-      ["Puntualidad de entregas", `${avgPunctuality}%`, "84%", "Sobre benchmark"],
-      ["Rutas saludables", `${avgHealthy}%`, "78%", "Positivo"],
-      ["Conductores activos", String(activeDrivers), "N/A", "Operativo"],
-      ["Incidencias seguridad laboral", "0", "<2", "Controlado"],
-    ],
+    body: data.social.seguridad.map((r) => [r.kpi, r.valor, r.benchmark, r.estado]),
     headStyles: { fillColor: C.primary, textColor: C.white },
-    styles: { fontSize: 9, cellPadding: 3, textColor: C.text, font: "helvetica" },
+    styles: { fontSize: 8.8, cellPadding: 2.7, textColor: C.text, font: "helvetica" },
     alternateRowStyles: { fillColor: C.bg },
     margin: { left: 20, right: 20 },
     columnStyles: { 0: { cellWidth: 90 }, 1: { cellWidth: 27 }, 2: { cellWidth: 27 }, 3: { cellWidth: 26 } },
+  })
+  y = (doc as any).lastAutoTable.finalY + 6
+  autoTable(doc, {
+    startY: y,
+    head: [["Nivel de riesgo", "Umbral PM2.5", "Conductores Q1", "% total", "Acción"]],
+    body: data.social.exposicion_pm25.map((r) => [r.nivel, r.umbral, r.conductores, r.porcentaje, r.accion]),
+    headStyles: { fillColor: C.primary, textColor: C.white, fontSize: 8 },
+    styles: { fontSize: 8, cellPadding: 2.5, textColor: C.text, font: "helvetica" },
+    alternateRowStyles: { fillColor: C.bg },
+    margin: { left: 20, right: 20 },
+    columnStyles: { 0: { cellWidth: 25 }, 1: { cellWidth: 45 }, 2: { cellWidth: 30 }, 3: { cellWidth: 20 }, 4: { cellWidth: 50 } },
   })
 
   // Página 8
@@ -296,14 +430,7 @@ export async function buildEsgPdf({ drivers, simulation = INITIAL_GOVERNANCE_STA
   autoTable(doc, {
     startY: y,
     head: [["Indicador", "Q1 2026"]],
-    body: [
-      ["Canal de denuncias", "Disponible 24/7 y trazable"],
-      ["% datos verificados", `${traceability}%`],
-      ["Precisión YOLOv8", `${yoloPrecision.toFixed(1)}%`],
-      ["Auditoría programada", "Q3 2026"],
-      ["Integridad hash SHA-256", "Aplicada en eventos críticos"],
-      ["Fuentes certificadas", `${simulation.officialSources.length} conectadas`],
-    ],
+    body: data.gobernanza_metricas.map((r) => [r.indicador, r.valor]),
     headStyles: { fillColor: C.primary, textColor: C.white },
     styles: { fontSize: 9, cellPadding: 3, textColor: C.text, font: "helvetica" },
     alternateRowStyles: { fillColor: C.bg },
@@ -317,16 +444,9 @@ export async function buildEsgPdf({ drivers, simulation = INITIAL_GOVERNANCE_STA
   autoTable(doc, {
     startY: y,
     head: [["Horizonte", "Acción", "Responsable"]],
-    body: [
-      ["Q2 2026 (Corto)", "Scope 2 completo + piloto Scope 3", "Joahan Morales"],
-      ["Q2 2026 (Corto)", "Reporte Q1 + validación Watson + SHA-256", "Omar Zoe Martínez"],
-      ["Q3 2026 (Mediano)", "Primera auditoría externa ESG", "Comité ESG"],
-      ["Q3 2026 (Mediano)", "Piloto vehículos eléctricos + TRIR", "Mauro Morales"],
-      ["Q4 2026 (Mediano)", "Expansión a otra ciudad", "Equipo completo"],
-      ["2027+ (Largo)", "Scope 3 completo + EcoVadis/CDP", "Comité ESG"],
-    ],
+    body: data.hoja_ruta.map((r) => [r.horizonte, r.accion, r.responsable]),
     headStyles: { fillColor: C.primary, textColor: C.white },
-    styles: { fontSize: 9, cellPadding: 3, textColor: C.text, font: "helvetica" },
+    styles: { fontSize: 8.8, cellPadding: 2.8, textColor: C.text, font: "helvetica" },
     alternateRowStyles: { fillColor: C.bg },
     margin: { left: 20, right: 20 },
     columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 105 }, 2: { cellWidth: 30 } },
@@ -338,20 +458,9 @@ export async function buildEsgPdf({ drivers, simulation = INITIAL_GOVERNANCE_STA
   autoTable(doc, {
     startY: y,
     head: [["Término", "Definición"]],
-    body: [
-      ["CO2e", "Equivalente de CO2 ponderado por potencial de calentamiento global"],
-      ["PM2.5", "Partículas menores a 2.5 micrómetros"],
-      ["NOx", "Óxidos de nitrógeno precursores de ozono troposférico"],
-      ["TRIR", "Total Recordable Incident Rate por 200,000 horas"],
-      ["LTIR", "Lesiones con baja laboral por 200,000 horas"],
-      ["Scope 1/2/3", "Emisiones directas, energía y cadena de valor"],
-      ["YOLOv8", "Modelo de visión para detección de objetos en tiempo real"],
-      ["IFRS S1/S2", "Normas ISSB de divulgación de sostenibilidad"],
-      ["GRI 305", "Estándar GRI para reporte de emisiones"],
-      ["SIMAT", "Sistema de Monitoreo Atmosférico de CDMX"],
-    ],
+    body: data.glosario.map((row) => [row.termino, row.definicion]),
     headStyles: { fillColor: C.primary, textColor: C.white },
-    styles: { fontSize: 8.5, cellPadding: 2.8, textColor: C.text, font: "helvetica" },
+    styles: { fontSize: 8.5, cellPadding: 2.7, textColor: C.text, font: "helvetica" },
     alternateRowStyles: { fillColor: C.bg },
     margin: { left: 20, right: 20 },
     columnStyles: { 0: { cellWidth: 30 }, 1: { cellWidth: 140 } },
@@ -374,6 +483,9 @@ export async function buildEsgPdf({ drivers, simulation = INITIAL_GOVERNANCE_STA
     addHeaderFooter(doc, page, totalPages)
   }
 
-  return { name: reportName, pdfDataUri: toDataUri(doc) }
+  const pdfDataUri = toDataUri(doc)
+  const pdfBlob = toBlob(pdfDataUri)
+  downloadBlob(pdfBlob, fileName)
+  return { name: fileName, pdfDataUri, pdfBlob }
 }
 
