@@ -3,7 +3,7 @@
 import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
 
-type Tab = "home" | "mapa" | "dashboard" | "conductores" | "simulacion" | "reportes"
+type Tab = "home" | "mapa" | "dashboard" | "conductores" | "simulacion" | "esg"
 
 interface NavbarProps {
   activeTab: Tab
@@ -15,7 +15,7 @@ const tabs = [
   { id: "dashboard" as Tab, label: "Dashboard" },
   { id: "conductores" as Tab, label: "Conductores" },
   { id: "simulacion" as Tab, label: "Simulación" },
-  { id: "reportes" as Tab, label: "Reportes" },
+  { id: "esg" as Tab, label: "ESG" },
 ]
 
 export function Navbar({ activeTab, onTabChange }: NavbarProps) {

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import dynamic from "next/dynamic"
 import { Navbar } from "@/components/lumivia/navbar"
 import { HomeSection } from "@/components/lumivia/home-section"
 import GlobeThree from "@/components/lumivia/globe-three"
@@ -9,7 +10,6 @@ import MapSection from "@/components/lumivia/map-section"
 import { DashboardSection } from "@/components/lumivia/dashboard-section"
 import { DriversSection } from "@/components/lumivia/drivers-section"
 import { SimulationSection } from "@/components/lumivia/simulation-section"
-import { ReportsSection } from "@/components/lumivia/reports-section"
 import { AnimatedSection } from "@/components/ui/animated-section"
 import { Toaster } from "@/components/ui/toaster"
 import {
@@ -25,7 +25,11 @@ import {
   updateDriverStatus,
 } from "@/lib/drivers"
 
-type Tab = "home" | "mapa" | "dashboard" | "conductores" | "simulacion" | "reportes"
+type Tab = "home" | "mapa" | "dashboard" | "conductores" | "simulacion" | "esg"
+
+const EsgSection = dynamic(() => import("@/components/lumivia/esg-section").then((mod) => mod.EsgSection), {
+  ssr: false,
+})
 
 function cloneDrivers(list: DriverRecord[]): DriverRecord[] {
   return list.map((driver) => ({
@@ -197,10 +201,10 @@ export default function LumivIADashboard() {
           </AnimatedSection>
         )}
 
-        {/* Reports */}
-        {activeTab === "reportes" && (
+        {/* ESG */}
+        {activeTab === "esg" && (
           <AnimatedSection>
-            <ReportsSection />
+            <EsgSection drivers={drivers} />
           </AnimatedSection>
         )}
       </main>
