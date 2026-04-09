@@ -64,4 +64,13 @@ export const lumivIAToasts = {
       className: "bg-[#7c6bff] border-[#7c6bff] text-white",
     })
   },
+
+  esgReportGenerated: () => {
+    toast({
+      title: "Reporte ESG generado",
+      description: "Se agregó al historial y está disponible para previsualización.",
+      variant: "default",
+      className: "bg-[#1a52a0] border-[#1a52a0] text-white",
+    })
+  },
 }
