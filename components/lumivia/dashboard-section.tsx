@@ -17,7 +17,7 @@ import { Bar, BarChart, Cell, Line, LineChart, Pie, PieChart, XAxis, YAxis } fro
 import { INITIAL_GOVERNANCE_STATE, nextGovernanceState } from "@/lib/dashboard-simulator"
 import { AbstractBackground } from "@/components/ui/abstract-background"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
-import { ROUTE_DETAILS, type DriverRecord, type RouteKey } from "@/lib/drivers"
+import { ROUTE_TEMPLATE_BY_ID, ROUTE_TEMPLATES, type DriverRecord } from "@/lib/drivers"
 
 const DASHBOARD_MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN_DASHBOARD || ""
 
@@ -26,43 +26,7 @@ type CongestionLevel = "unknown" | "low" | "moderate" | "heavy" | "severe"
 
 const mapCenter: Coordinate = [-99.1603, 19.4188]
 
-const fallbackTraditionalRoute: Coordinate[] = [
-  [-99.1762, 19.4341],
-  [-99.1695, 19.4302],
-  [-99.1642, 19.4276],
-  [-99.1601, 19.4242],
-  [-99.1568, 19.4201],
-  [-99.1524, 19.4153],
-  [-99.1468, 19.4071],
-]
-
-const fallbackSafeRoute: Coordinate[] = [
-  [-99.1698, 19.4381],
-  [-99.1652, 19.4362],
-  [-99.1603, 19.4334],
-  [-99.1549, 19.4289],
-  [-99.1506, 19.4238],
-  [-99.1471, 19.4175],
-  [-99.1438, 19.4106],
-  [-99.1412, 19.4044],
-]
-
-const fallbackExpressRoute: Coordinate[] = [
-  [-99.1814, 19.4288],
-  [-99.1767, 19.4264],
-  [-99.1719, 19.4222],
-  [-99.1663, 19.4181],
-  [-99.1608, 19.4144],
-  [-99.1551, 19.4097],
-  [-99.1497, 19.4064],
-  [-99.1445, 19.4037],
-]
-
-const routeWaypoints: Record<RouteKey, Coordinate[]> = {
-  traditional: fallbackTraditionalRoute,
-  safe: fallbackSafeRoute,
-  express: fallbackExpressRoute,
-}
+const defaultFallbackRoute: Coordinate[] = ROUTE_TEMPLATES[0].waypoints
 
 const hazardEvents = [
   {
@@ -81,44 +45,50 @@ const hazardEvents = [
   },
 ]
 
-const CAR_HEADING_OFFSET = -90
+const CAR_HEADING_OFFSET = 0
 
 interface VehicleProfile {
   id: string
   code: string
   name: string
   color: string
-  routeKey: RouteKey
+  routeId: string
   speed: number
   start: number
 }
 
 function buildVehicleProfiles(drivers: DriverRecord[]): VehicleProfile[] {
-  const active = drivers.filter((driver) => driver.status !== "completed")
+  const active = drivers.filter((driver) => driver.status === "en_curso")
   return active.slice(0, 18).map((driver, index) => {
-    const routeBaseSpeed: Record<RouteKey, number> = {
-      safe: 0.015,
-      traditional: 0.0138,
-      express: 0.0162,
-    }
+    const routeIdx = ROUTE_TEMPLATES.findIndex((route) => route.id === driver.routeId)
+    const routeBaseSpeed = 0.0138 + ((routeIdx >= 0 ? routeIdx % 4 : 0) * 0.00035)
     const reliabilityFactor = 1 + (driver.performance.punctualityRate - 80) / 800
-    const speed = Math.max(0.011, routeBaseSpeed[driver.routeKey] * reliabilityFactor - index * 0.00022)
+    const speed = Math.max(0.0095, routeBaseSpeed * reliabilityFactor - index * 0.00016)
     return {
       id: driver.id,
       code: driver.code,
       name: driver.fullName,
       color: driver.unitColor,
-      routeKey: driver.routeKey,
+      routeId: driver.routeId,
       speed,
       start: ((index * 0.12) % 0.78),
     }
   })
 }
 
-function routeBadgeClasses(routeKey: RouteKey): string {
-  if (routeKey === "safe") return "text-cyan-200 bg-cyan-500/15 border-cyan-400/35"
-  if (routeKey === "traditional") return "text-slate-200 bg-slate-500/15 border-slate-400/35"
-  return "text-emerald-200 bg-emerald-500/15 border-emerald-400/35"
+function routeBadgeClasses(routeId: string): string {
+  const route = ROUTE_TEMPLATE_BY_ID[routeId]
+  if (!route) return "text-slate-200 bg-slate-500/15 border-slate-400/35"
+  return "text-slate-100 border-slate-300/35"
+}
+
+function routeLabelById(routeId: string): string {
+  return ROUTE_TEMPLATE_BY_ID[routeId]?.label ?? "Ruta"
+}
+
+function routeWaypointsForId(routeId: string): Coordinate[] {
+  const template = ROUTE_TEMPLATE_BY_ID[routeId]
+  return (template?.waypoints as Coordinate[] | undefined) ?? defaultFallbackRoute
 }
 
 const mapboxDarkStyle = "mapbox://styles/mapbox/dark-v11"
@@ -226,7 +196,7 @@ function coordinateDistance(from: Coordinate, to: Coordinate): number {
 }
 
 function createRouteTrack(coordinates: Coordinate[]): RouteTrack {
-  const safeCoordinates = coordinates.length > 1 ? coordinates : fallbackSafeRoute
+  const safeCoordinates = coordinates.length > 1 ? coordinates : defaultFallbackRoute
   const cumulative: number[] = [0]
 
   for (let i = 1; i < safeCoordinates.length; i += 1) {
@@ -429,22 +399,24 @@ function updateRouteLayer(map: mapboxgl.Map, id: string, coordinates: Coordinate
   })
 }
 
-function updateProgressiveLayers(map: mapboxgl.Map, routeCoords: Coordinate[], currentIndex: number) {
+function updateProgressiveLayers(map: mapboxgl.Map, routeCoords: Coordinate[], currentIndex: number, layerPrefix: string) {
   if (routeCoords.length < 2 || currentIndex < 1) return
   const traveled = routeCoords.slice(0, currentIndex + 1)
   const remaining = routeCoords.slice(Math.max(0, currentIndex))
+  const traveledId = `${layerPrefix}-traveled`
+  const remainingId = `${layerPrefix}-remaining`
   if (traveled.length > 1) {
-    if (!map.getSource("safe-traveled")) {
-      addRouteLayer(map, "safe-traveled", traveled, "#6b7280", 6, 0.82)
+    if (!map.getSource(traveledId)) {
+      addRouteLayer(map, traveledId, traveled, "#6b7280", 6, 0.82)
     } else {
-      updateRouteLayer(map, "safe-traveled", traveled)
+      updateRouteLayer(map, traveledId, traveled)
     }
   }
   if (remaining.length > 1) {
-    if (!map.getSource("safe-remaining")) {
-      addRouteLayer(map, "safe-remaining", remaining, "#7dd3fc", 6, 0.9)
+    if (!map.getSource(remainingId)) {
+      addRouteLayer(map, remainingId, remaining, "#7dd3fc", 6, 0.9)
     } else {
-      updateRouteLayer(map, "safe-remaining", remaining)
+      updateRouteLayer(map, remainingId, remaining)
     }
   }
 }
@@ -600,16 +572,8 @@ function DashboardMap({
   const lastFrameRef = useRef<number | null>(null)
   const progressRef = useRef<number[]>([])
   const completedCarsRef = useRef<boolean[]>([])
-  const routeCoordinatesRef = useRef<Record<RouteKey, Coordinate[]>>({
-    traditional: fallbackTraditionalRoute,
-    safe: fallbackSafeRoute,
-    express: fallbackExpressRoute,
-  })
-  const routeTracksRef = useRef<Record<RouteKey, RouteTrack>>({
-    traditional: createRouteTrack(fallbackTraditionalRoute),
-    safe: createRouteTrack(fallbackSafeRoute),
-    express: createRouteTrack(fallbackExpressRoute),
-  })
+  const routeCoordinatesRef = useRef<Record<string, Coordinate[]>>({})
+  const routeTracksRef = useRef<Record<string, RouteTrack>>({})
   const vehicleStateRef = useRef<Array<{ position: Coordinate; bearing: number } | null>>([])
 
   useEffect(() => {
@@ -633,80 +597,52 @@ function DashboardMap({
       void (async () => {
         add3DBuildingsLayer(map)
 
-        const safeEndpoints = routeEndpoints(routeWaypoints.safe)
-        const traditionalEndpoints = routeEndpoints(routeWaypoints.traditional)
-        const expressEndpoints = routeEndpoints(routeWaypoints.express)
-        const [safeDirection, traditionalDirection, expressDirection, safeFallbackDirections, traditionalFallbackDirections, expressFallbackDirections] = await Promise.all([
-          fetchDirectionsFromWaypoints(routeWaypoints.safe),
-          fetchDirectionsFromWaypoints(routeWaypoints.traditional),
-          fetchDirectionsFromWaypoints(routeWaypoints.express),
-          fetchDirections(safeEndpoints.origin, safeEndpoints.destination),
-          fetchDirections(traditionalEndpoints.origin, traditionalEndpoints.destination),
-          fetchDirections(expressEndpoints.origin, expressEndpoints.destination),
-        ])
+        const uniqueRouteIds = Array.from(new Set(vehicleProfiles.map((vehicle) => vehicle.routeId)))
+        const routeById: Record<string, Coordinate[]> = {}
+        const routeMetaById: Record<string, { emissions: number; steps: NavigationStep[]; distance: number; duration: number }> = {}
 
-        const fallbackTraditional: DirectionsRoute = {
-          distance: 8400,
-          duration: 760,
-          geometry: { coordinates: fallbackTraditionalRoute },
-          legs: [{ annotation: { congestion: ["moderate", "heavy", "moderate"] } }],
-        }
-        const fallbackSafe: DirectionsRoute = {
-          distance: 9100,
-          duration: 840,
-          geometry: { coordinates: fallbackSafeRoute },
-          legs: [{ annotation: { congestion: ["low", "moderate", "low"] } }],
-        }
-        const fallbackExpress: DirectionsRoute = {
-          distance: 8600,
-          duration: 720,
-          geometry: { coordinates: fallbackExpressRoute },
-          legs: [{ annotation: { congestion: ["moderate", "low", "moderate"] } }],
-        }
+        await Promise.all(
+          uniqueRouteIds.map(async (routeId) => {
+            const fallbackCoords = routeWaypointsForId(routeId)
+            const fallbackRoute: DirectionsRoute = {
+              distance: Math.round(createRouteTrack(fallbackCoords).total),
+              duration: 820,
+              geometry: { coordinates: fallbackCoords },
+              legs: [{ annotation: { congestion: ["moderate", "low", "moderate"] } }],
+            }
 
-        const selectedSafeRoute = safeDirection ?? safeFallbackDirections?.[0] ?? fallbackSafe
-        const selectedTraditionalRoute = traditionalDirection ?? traditionalFallbackDirections?.[0] ?? fallbackTraditional
-        const selectedExpressRoute = expressDirection ?? expressFallbackDirections?.[0] ?? fallbackExpress
-        const [matchedSafeRoute, matchedTraditionalRoute, matchedExpressRoute] = await Promise.all([
-          fetchMatchedRoute(selectedSafeRoute.geometry.coordinates),
-          fetchMatchedRoute(selectedTraditionalRoute.geometry.coordinates),
-          fetchMatchedRoute(selectedExpressRoute.geometry.coordinates),
-        ])
-        const safeRoute = densifyRouteCoordinates(matchedSafeRoute ?? selectedSafeRoute.geometry.coordinates, 8)
-        const traditionalRoute = densifyRouteCoordinates(matchedTraditionalRoute ?? selectedTraditionalRoute.geometry.coordinates, 8)
-        const expressRouteCandidate = densifyRouteCoordinates(matchedExpressRoute ?? selectedExpressRoute.geometry.coordinates, 8)
-        const expressRoute =
-          maxRouteSegmentDistance(expressRouteCandidate) > 260
-            ? densifyRouteCoordinates(fallbackExpressRoute, 8)
-            : expressRouteCandidate
-        const safeRouteEmissions = calculateEmissionsFromCongestion(
-          selectedSafeRoute.legs?.[0]?.annotation?.congestion,
-          selectedSafeRoute.distance,
-        )
-        const traditionalRouteEmissions = calculateEmissionsFromCongestion(
-          selectedTraditionalRoute.legs?.[0]?.annotation?.congestion,
-          selectedTraditionalRoute.distance,
-        )
-        const expressRouteEmissions = calculateEmissionsFromCongestion(
-          selectedExpressRoute.legs?.[0]?.annotation?.congestion,
-          selectedExpressRoute.distance,
-        )
-        const safeNavigationSteps = deriveNavigationSteps(selectedSafeRoute)
+            const directionsByWaypoints = await fetchDirectionsFromWaypoints(fallbackCoords)
+            const endpointPair = routeEndpoints(fallbackCoords)
+            const alternativeRoutes = await fetchDirections(endpointPair.origin, endpointPair.destination)
+            const selectedRoute = directionsByWaypoints ?? alternativeRoutes?.[0] ?? fallbackRoute
+            const matched = await fetchMatchedRoute(selectedRoute.geometry.coordinates)
+            const normalizedRoute = densifyRouteCoordinates(matched ?? selectedRoute.geometry.coordinates, 5)
 
-        routeCoordinatesRef.current = { traditional: traditionalRoute, safe: safeRoute, express: expressRoute }
-        routeTracksRef.current = {
-          traditional: createRouteTrack(traditionalRoute),
-          safe: createRouteTrack(safeRoute),
-          express: createRouteTrack(expressRoute),
-        }
+            routeById[routeId] = normalizedRoute
+            routeMetaById[routeId] = {
+              emissions: calculateEmissionsFromCongestion(selectedRoute.legs?.[0]?.annotation?.congestion, selectedRoute.distance),
+              steps: deriveNavigationSteps(selectedRoute),
+              distance: selectedRoute.distance,
+              duration: selectedRoute.duration,
+            }
+          }),
+        )
+
+        routeCoordinatesRef.current = routeById
+        routeTracksRef.current = Object.fromEntries(
+          Object.entries(routeById).map(([routeId, coords]) => [routeId, createRouteTrack(coords)]),
+        )
         progressRef.current = vehicleProfiles.map((vehicle) => vehicle.start)
         completedCarsRef.current = vehicleProfiles.map(() => false)
         vehicleStateRef.current = vehicleProfiles.map(() => null)
 
-        addRouteLayer(map, "traditional-route", traditionalRoute, "#4b5563", 5, 0.6)
-        addRouteLayer(map, "safe-route", safeRoute, "#60a5fa", 7, 0.88)
-        addRouteLayer(map, "express-route", expressRoute, "#34d399", 5, 0.75)
-        fitToRoutes(map, [...safeRoute, ...traditionalRoute, ...expressRoute])
+        const allRoutePoints: Coordinate[] = []
+        Object.entries(routeById).forEach(([routeId, coords], idx) => {
+          const color = ROUTE_TEMPLATE_BY_ID[routeId]?.color ?? ["#60a5fa", "#34d399", "#f59e0b"][idx % 3]
+          addRouteLayer(map, `route-${routeId}`, coords, color, 5.5, 0.8)
+          allRoutePoints.push(...coords)
+        })
+        fitToRoutes(map, allRoutePoints)
 
         hazardEvents.forEach((event) => {
           const markerEl = document.createElement("div")
@@ -718,7 +654,7 @@ function DashboardMap({
           staticMarkersRef.current.push(new mapboxgl.Marker({ element: markerEl }).setLngLat(event.coords).setPopup(popup).addTo(map))
         })
 
-        const safeVehicleIndex = vehicleProfiles.findIndex((vehicle) => vehicle.routeKey === "safe")
+        const navigationVehicleIndex = 0
 
         vehicleProfiles.forEach((car, index) => {
           const markerEl = document.createElement("div")
@@ -734,23 +670,14 @@ function DashboardMap({
             <span class="car-wheel car-wheel-back"></span>
             <span class="car-marker-id">${car.code.replace("LUM-", "")}</span>
           `
-          const routeKey = car.routeKey
-          const routeLabelByKey: Record<RouteKey, string> = {
-            safe: "ruta segura",
-            traditional: "ruta tradicional",
-            express: "ruta express",
-          }
-          const routeEmissionByKey: Record<RouteKey, number> = {
-            safe: safeRouteEmissions,
-            traditional: traditionalRouteEmissions,
-            express: expressRouteEmissions,
-          }
-          const routeLabel = routeLabelByKey[routeKey]
-          const routeEmission = routeEmissionByKey[routeKey]
+          const routeId = car.routeId
+          const routeLabel = routeLabelById(routeId).toLowerCase()
+          const routeEmission = routeMetaById[routeId]?.emissions ?? 0
           const popup = new mapboxgl.Popup({ offset: 12 }).setHTML(
-            `<strong>${car.name}</strong><p style="margin-top:4px">Unidad ${car.code}</p><p style="margin-top:4px">Seguimiento en ${routeLabel}</p><p style="margin-top:4px">CO₂ estimado: ${routeEmission} g</p>`,
+            `<div style="color:#111827"><strong>${car.name}</strong><p style="margin-top:4px">Unidad ${car.code}</p><p style="margin-top:4px">Seguimiento en ${routeLabel}</p><p style="margin-top:4px">CO₂ estimado: ${routeEmission} g</p></div>`,
           )
-          const routeTrack = routeTracksRef.current[routeKey]
+          const routeTrack = routeTracksRef.current[routeId]
+          if (!routeTrack) return
           const initialPosition = positionOnTrack(routeTrack, progressRef.current[index])
           const initialBearing = bearingOnTrack(routeTrack, progressRef.current[index]) + CAR_HEADING_OFFSET
           const marker = new mapboxgl.Marker({
@@ -784,13 +711,14 @@ function DashboardMap({
           const deltaSeconds = Math.min(0.1, Math.max(0.001, (timestamp - previousFrame) / 1000))
           const blend = Math.min(0.82, Math.max(0.18, deltaSeconds * 5.5))
           lastFrameRef.current = timestamp
-          let latestSafePosition: Coordinate | null = null
+          let latestTrackedPosition: { pos: Coordinate; routeId: string; progress: number } | null = null
           carMarkersRef.current.forEach((marker, idx) => {
             if (completedCarsRef.current[idx]) return
             const currentVehicle = vehicleProfiles[idx]
             if (!currentVehicle) return
-            const routeKey = currentVehicle.routeKey
-            const routeTrack = routeTracksRef.current[routeKey]
+            const routeId = currentVehicle.routeId
+            const routeTrack = routeTracksRef.current[routeId]
+            if (!routeTrack) return
             const zoom = map.getZoom()
             const zoomSlowdown = Math.max(0.5, Math.min(1.06, 0.7 + (zoom - 13) * 0.06))
             const nextProgress = Math.min(1, progressRef.current[idx] + currentVehicle.speed * zoomSlowdown * deltaSeconds)
@@ -807,26 +735,29 @@ function DashboardMap({
               : bearingOnTrack(routeTrack, nextProgress) + CAR_HEADING_OFFSET
             const previousState = vehicleStateRef.current[idx]
             const displayBearing = previousState ? smoothAngle(previousState.bearing, targetBearing, blend) : targetBearing
-            vehicleStateRef.current[idx] = { position: targetPosition, bearing: displayBearing }
-            marker.setLngLat(targetPosition)
+            const snappedPosition = positionOnTrack(routeTrack, nextProgress)
+            vehicleStateRef.current[idx] = { position: snappedPosition, bearing: displayBearing }
+            marker.setLngLat(snappedPosition)
             marker.setRotation(displayBearing)
             if (reachedDestination) completedCarsRef.current[idx] = true
-            if (routeKey === "safe" && (safeVehicleIndex < 0 || idx === safeVehicleIndex)) latestSafePosition = targetPosition
+            if (idx === navigationVehicleIndex) latestTrackedPosition = { pos: snappedPosition, routeId, progress: nextProgress }
           })
-          if (latestSafePosition) {
-            const safeCoords = routeCoordinatesRef.current.safe
-            const { index } = findClosestPointOnRoute(latestSafePosition, safeCoords)
-            updateProgressiveLayers(map, safeCoords, index)
-            const routeProgress = safeCoords.length > 1 ? index / (safeCoords.length - 1) : 0
+          if (latestTrackedPosition) {
+            const trackedCoords = routeCoordinatesRef.current[latestTrackedPosition.routeId] ?? []
+            const { index } = findClosestPointOnRoute(latestTrackedPosition.pos, trackedCoords)
+            updateProgressiveLayers(map, trackedCoords, index, `route-progress-${latestTrackedPosition.routeId}`)
+            const routeProgress = trackedCoords.length > 1 ? index / (trackedCoords.length - 1) : latestTrackedPosition.progress
+            const routeMeta = routeMetaById[latestTrackedPosition.routeId]
+            const navigationSteps = routeMeta?.steps ?? fallbackNavigationSteps()
             const stepIndex = Math.min(
-              safeNavigationSteps.length - 1,
-              Math.max(0, Math.floor(routeProgress * safeNavigationSteps.length)),
+              navigationSteps.length - 1,
+              Math.max(0, Math.floor(routeProgress * navigationSteps.length)),
             )
             const remainingProgress = 1 - routeProgress
-            const remainingMeters = selectedSafeRoute.distance * remainingProgress
-            const remainingSeconds = selectedSafeRoute.duration * remainingProgress
+            const remainingMeters = (routeMeta?.distance ?? 0) * remainingProgress
+            const remainingSeconds = (routeMeta?.duration ?? 0) * remainingProgress
             onNavigationUpdate?.({
-              steps: safeNavigationSteps,
+              steps: navigationSteps,
               activeStepIndex: stepIndex,
               remainingKm: Number((remainingMeters / 1000).toFixed(2)),
               etaMinutes: Math.max(1, Math.round(remainingSeconds / 60)),
@@ -1251,8 +1182,8 @@ export function DashboardSection({ drivers }: { drivers: DriverRecord[] }) {
                       <Car className="h-4 w-4 flex-shrink-0 text-sky-400" />
                       <span className="truncate">{car.code}</span>
                     </p>
-                    <span className={`flex-shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${routeBadgeClasses(car.routeKey)}`}>
-                      {ROUTE_DETAILS[car.routeKey].label}
+                    <span className={`flex-shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${routeBadgeClasses(car.routeId)}`}>
+                      {routeLabelById(car.routeId)}
                     </span>
                   </div>
                 ))}

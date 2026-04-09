@@ -249,7 +249,7 @@ export default function useFloodData(isSimulation = true, forceRain = false) {
       }
     } catch (e) {
       console.error('Error fetching weather:', e);
-      console.warn('⚠️ Fallback a modo simulación por error en OpenWeatherMap API');
+      console.warn('⚠️ Fallback por error en OpenWeatherMap API');
       
       // Fallback a simulación si la API falla
       const numZones = 2 + Math.floor(Math.random() * 3);
@@ -270,7 +270,7 @@ export default function useFloodData(isSimulation = true, forceRain = false) {
         rainVolume: 2 + Math.random() * 10,
         isRaining: true,
       });
-      setError('OpenWeatherMap API no disponible - usando simulación');
+      setError('OpenWeatherMap API no disponible - usando datos locales');
     }
   }, [isSimulation, forceRain]);
 

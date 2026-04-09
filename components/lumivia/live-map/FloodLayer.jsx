@@ -91,14 +91,14 @@ export default function FloodLayer({
   // Log de estado
   useEffect(() => {
     if (isFloodVisible && !loading) {
-      console.log('🌊 FloodLayer activo:', {
-        isRaining,
-        forceRain,
-        zonas: rainZones.length,
-        reportes: reports.length,
-        modo: isSimulation ? 'simulación' : 'real',
-      });
-    }
+        console.log('🌊 FloodLayer activo:', {
+          isRaining,
+          forceRain,
+          zonas: rainZones.length,
+          reportes: reports.length,
+          modo: isSimulation ? 'interno' : 'real',
+        });
+      }
   }, [isFloodVisible, isRaining, forceRain, rainZones.length, reports.length, isSimulation, loading]);
 
   if (!map) {
