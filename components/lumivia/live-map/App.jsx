@@ -6,7 +6,7 @@ import FlowControls from './FlowControls';
 import RouteLayer from './RouteLayer';
 import FloodLayer from './FloodLayer';
 
-export default function App() {
+export default function App({ drivers = [], onAssignmentStatusChange }) {
   const [activeLayer, setActiveLayer] = useState('traffic');
   const [mapTheme, setMapTheme] = useState('dark');
   const isSimulation = true;
@@ -65,6 +65,8 @@ export default function App() {
         mapTheme={mapTheme}
         isSimulation={isSimulation}
         floodData={floodData}
+        drivers={drivers}
+        onAssignmentStatusChange={onAssignmentStatusChange}
       />
       <FloodLayer
         map={mapInstance}

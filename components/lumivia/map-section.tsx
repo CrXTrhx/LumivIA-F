@@ -1,14 +1,18 @@
 "use client"
 
 import LiveMapApp from "@/components/lumivia/live-map/App"
+import type { DriverRecord, DriverStatus } from "@/lib/drivers"
 import "mapbox-gl/dist/mapbox-gl.css"
 
 interface MapSectionProps {
   style?: React.CSSProperties
   triggerFlyTo?: boolean
+  drivers?: DriverRecord[]
+  onDriverStatusChange?: (driverId: string, status: DriverStatus) => void
+  onAssignmentStatusChange?: (driverId: string, assignmentId: string, status: DriverStatus) => void
 }
 
-export default function MapSection({ style }: MapSectionProps) {
+export default function MapSection({ style, drivers = [], onDriverStatusChange, onAssignmentStatusChange }: MapSectionProps) {
   return (
     <div style={{ position: "relative", width: "100%", height: "100%", ...style }}>
       <style jsx global>{`
@@ -52,7 +56,11 @@ export default function MapSection({ style }: MapSectionProps) {
           }
         }
       `}</style>
-      <LiveMapApp />
+      <LiveMapApp
+        drivers={drivers}
+        onDriverStatusChange={onDriverStatusChange}
+        onAssignmentStatusChange={onAssignmentStatusChange}
+      />
     </div>
   )
 }

@@ -58,9 +58,17 @@ interface VehicleProfile {
 }
 
 function buildVehicleProfiles(drivers: DriverRecord[]): VehicleProfile[] {
-  const active = drivers.filter((driver) => driver.status === "en_curso")
-  return active.slice(0, 18).map((driver, index) => {
-    const routeIdx = ROUTE_TEMPLATES.findIndex((route) => route.id === driver.routeId)
+  const active = drivers
+    .map((driver) => {
+      const activeAssignment = (driver.assignments || []).find((assignment) => assignment.status === "en_curso")
+      if (!activeAssignment) return null
+      return { driver, activeAssignment }
+    })
+    .filter(Boolean)
+
+  return active.slice(0, 18).map((entry, index) => {
+    const { driver, activeAssignment } = entry
+    const routeIdx = ROUTE_TEMPLATES.findIndex((route) => route.id === activeAssignment.routeId)
     const routeBaseSpeed = 0.0138 + ((routeIdx >= 0 ? routeIdx % 4 : 0) * 0.00035)
     const reliabilityFactor = 1 + (driver.performance.punctualityRate - 80) / 800
     const speed = Math.max(0.0095, routeBaseSpeed * reliabilityFactor - index * 0.00016)
@@ -69,7 +77,7 @@ function buildVehicleProfiles(drivers: DriverRecord[]): VehicleProfile[] {
       code: driver.code,
       name: driver.fullName,
       color: driver.unitColor,
-      routeId: driver.routeId,
+      routeId: activeAssignment.routeId,
       speed,
       start: ((index * 0.12) % 0.78),
     }
@@ -592,6 +600,12 @@ function DashboardMap({
       attributionControl: false,
       maxPitch: 70,
     })
+
+    // Keep fleet markers visually anchored to routes.
+    // Disables camera angle changes that make markers feel detached.
+    map.dragRotate.disable()
+    map.touchZoomRotate.disableRotation()
+    map.keyboard.disableRotation()
 
     map.on("style.load", () => {
       void (async () => {
