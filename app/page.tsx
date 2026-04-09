@@ -1,24 +1,73 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Navbar } from "@/components/lumivia/navbar"
 import { HomeSection } from "@/components/lumivia/home-section"
 import GlobeThree from "@/components/lumivia/globe-three"
 import GlobeSection from "@/components/lumivia/globe-section"
 import MapSection from "@/components/lumivia/map-section"
 import { DashboardSection } from "@/components/lumivia/dashboard-section"
+import { DriversSection } from "@/components/lumivia/drivers-section"
 import { SimulationSection } from "@/components/lumivia/simulation-section"
 import { ReportsSection } from "@/components/lumivia/reports-section"
 import { AnimatedSection } from "@/components/ui/animated-section"
 import { Toaster } from "@/components/ui/toaster"
+import {
+  assignRouteToDriver,
+  createDriverRecord,
+  DRIVERS_STORAGE_KEY,
+  INITIAL_DRIVERS,
+  parseStoredDrivers,
+  type DriverRecord,
+  type DriverStatus,
+  type RegisterDriverInput,
+  type RouteKey,
+  updateDriverStatus,
+} from "@/lib/drivers"
 
-type Tab = "home" | "mapa" | "dashboard" | "simulacion" | "reportes"
+type Tab = "home" | "mapa" | "dashboard" | "conductores" | "simulacion" | "reportes"
+
+function cloneDrivers(list: DriverRecord[]): DriverRecord[] {
+  return list.map((driver) => ({
+    ...driver,
+    performance: { ...driver.performance },
+    rewards: { ...driver.rewards },
+    history: driver.history.map((entry) => ({ ...entry })),
+  }))
+}
 
 export default function LumivIADashboard() {
   const [activeTab, setActiveTab] = useState<Tab>("home")
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [overlayVisible, setOverlayVisible] = useState(true)
   const [showMap, setShowMap] = useState(false)
+  const [drivers, setDrivers] = useState<DriverRecord[]>(() => {
+    if (typeof window === "undefined") return cloneDrivers(INITIAL_DRIVERS)
+    const stored = parseStoredDrivers(window.localStorage.getItem(DRIVERS_STORAGE_KEY))
+    return cloneDrivers(stored && stored.length ? stored : INITIAL_DRIVERS)
+  })
+  const driversReadyRef = useRef(false)
+
+  useEffect(() => {
+    driversReadyRef.current = true
+  }, [])
+
+  useEffect(() => {
+    if (!driversReadyRef.current || typeof window === "undefined") return
+    window.localStorage.setItem(DRIVERS_STORAGE_KEY, JSON.stringify(drivers))
+  }, [drivers])
+
+  const handleCreateDriver = (payload: RegisterDriverInput) => {
+    setDrivers((prev) => [createDriverRecord(payload, prev), ...prev])
+  }
+
+  const handleAssignDriverRoute = (driverId: string, routeKey: RouteKey, routeDateISO: string) => {
+    setDrivers((prev) => prev.map((driver) => (driver.id === driverId ? assignRouteToDriver(driver, routeKey, routeDateISO) : driver)))
+  }
+
+  const handleDriverStatus = (driverId: string, status: DriverStatus) => {
+    setDrivers((prev) => prev.map((driver) => (driver.id === driverId ? updateDriverStatus(driver, status) : driver)))
+  }
 
   const handleTabChange = (tab: Tab) => {
     if (tab === "home") {
@@ -114,7 +163,19 @@ export default function LumivIADashboard() {
         {/* Dashboard */}
         {activeTab === "dashboard" && (
           <AnimatedSection>
-            <DashboardSection />
+            <DashboardSection drivers={drivers} />
+          </AnimatedSection>
+        )}
+
+        {/* Drivers */}
+        {activeTab === "conductores" && (
+          <AnimatedSection>
+            <DriversSection
+              drivers={drivers}
+              onCreateDriver={handleCreateDriver}
+              onAssignRoute={handleAssignDriverRoute}
+              onUpdateDriverStatus={handleDriverStatus}
+            />
           </AnimatedSection>
         )}
 
