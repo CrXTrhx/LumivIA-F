@@ -74,12 +74,12 @@ export default function GlobeSection({ onTransitionStart, isTransitioning = fals
     cancelAnimationFrame(animFrameRef.current)
     mapRef.current.flyTo({
       center: [-99.1332, 19.4326],
-      zoom: 13,
-      pitch: 45,
-      bearing: -15,
-      duration: 3000,
+      zoom: 14.6,
+      pitch: 58,
+      bearing: -20,
+      duration: 4600,
       essential: true,
-      easing: (t) => t * (2 - t),
+      easing: (t) => 1 - Math.pow(1 - t, 3),
     })
 
     mapRef.current.once("moveend", () => {
@@ -90,7 +90,7 @@ export default function GlobeSection({ onTransitionStart, isTransitioning = fals
             onTransitionStart?.()
           })
         }
-      }, 300)
+      }, 180)
     })
   }, [isTransitioning, onTransitionStart])
 

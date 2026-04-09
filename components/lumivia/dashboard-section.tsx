@@ -82,9 +82,9 @@ const hazardEvents = [
 ]
 
 const carProfiles = [
-  { id: "LUM-204", color: "#94a3b8", speed: 0.036, start: 0 },
-  { id: "LUM-311", color: "#cbd5e1", speed: 0.03, start: 0 },
-  { id: "LUM-187", color: "#93c5fd", speed: 0.028, start: 0 },
+  { id: "LUM-204", color: "#94a3b8", speed: 0.019, start: 0 },
+  { id: "LUM-311", color: "#cbd5e1", speed: 0.0165, start: 0 },
+  { id: "LUM-187", color: "#93c5fd", speed: 0.0155, start: 0 },
 ]
 
 const vehicleRouteAssignments: RouteKey[] = ["safe", "traditional", "express"]
@@ -270,7 +270,7 @@ function smoothAngle(from: number, to: number, factor: number): number {
   return from + delta * factor
 }
 
-function densifyRouteCoordinates(coords: Coordinate[], maxSegmentMeters = 22): Coordinate[] {
+function densifyRouteCoordinates(coords: Coordinate[], maxSegmentMeters = 8): Coordinate[] {
   if (coords.length < 2) return coords
   const output: Coordinate[] = [coords[0]]
 
@@ -635,12 +635,12 @@ function DashboardMap({ onNavigationUpdate }: { onNavigationUpdate?: (payload: N
           fetchMatchedRoute(selectedTraditionalRoute.geometry.coordinates),
           fetchMatchedRoute(selectedExpressRoute.geometry.coordinates),
         ])
-        const safeRoute = densifyRouteCoordinates(matchedSafeRoute ?? selectedSafeRoute.geometry.coordinates)
-        const traditionalRoute = densifyRouteCoordinates(matchedTraditionalRoute ?? selectedTraditionalRoute.geometry.coordinates)
-        const expressRouteCandidate = densifyRouteCoordinates(matchedExpressRoute ?? selectedExpressRoute.geometry.coordinates)
+        const safeRoute = densifyRouteCoordinates(matchedSafeRoute ?? selectedSafeRoute.geometry.coordinates, 8)
+        const traditionalRoute = densifyRouteCoordinates(matchedTraditionalRoute ?? selectedTraditionalRoute.geometry.coordinates, 8)
+        const expressRouteCandidate = densifyRouteCoordinates(matchedExpressRoute ?? selectedExpressRoute.geometry.coordinates, 8)
         const expressRoute =
           maxRouteSegmentDistance(expressRouteCandidate) > 260
-            ? densifyRouteCoordinates(fallbackExpressRoute)
+            ? densifyRouteCoordinates(fallbackExpressRoute, 8)
             : expressRouteCandidate
         const safeRouteEmissions = calculateEmissionsFromCongestion(
           selectedSafeRoute.legs?.[0]?.annotation?.congestion,
@@ -728,8 +728,8 @@ function DashboardMap({ onNavigationUpdate }: { onNavigationUpdate?: (payload: N
 
         const updateCarMarkerScale = () => {
           const zoom = map.getZoom()
-          const normalized = Math.max(0, Math.min(1, (zoom - 12) / 6))
-          const scale = 1 - normalized * 0.34
+          const normalized = Math.max(0, Math.min(1, (zoom - 11) / 7))
+          const scale = 0.62 + normalized * 0.46
           carMarkerElementsRef.current.forEach((el) => {
             el.style.setProperty("--car-scale", scale.toFixed(3))
           })
@@ -740,7 +740,7 @@ function DashboardMap({ onNavigationUpdate }: { onNavigationUpdate?: (payload: N
         const animateCars = (timestamp: number) => {
           const previousFrame = lastFrameRef.current ?? timestamp
           const deltaSeconds = Math.min(0.1, Math.max(0.001, (timestamp - previousFrame) / 1000))
-          const blend = Math.min(0.9, Math.max(0.2, deltaSeconds * 7))
+          const blend = Math.min(0.82, Math.max(0.18, deltaSeconds * 5.5))
           lastFrameRef.current = timestamp
           let latestSafePosition: Coordinate | null = null
           carMarkersRef.current.forEach((marker, idx) => {
@@ -748,7 +748,7 @@ function DashboardMap({ onNavigationUpdate }: { onNavigationUpdate?: (payload: N
             const routeKey = vehicleRouteAssignments[idx] || "safe"
             const routeTrack = routeTracksRef.current[routeKey]
             const zoom = map.getZoom()
-            const zoomSlowdown = Math.max(0.42, 1 - Math.max(0, zoom - 13) * 0.12)
+            const zoomSlowdown = Math.max(0.5, Math.min(1.06, 0.7 + (zoom - 13) * 0.06))
             const nextProgress = Math.min(1, progressRef.current[idx] + carProfiles[idx].speed * zoomSlowdown * deltaSeconds)
             progressRef.current[idx] = nextProgress
             const reachedDestination = nextProgress >= 1

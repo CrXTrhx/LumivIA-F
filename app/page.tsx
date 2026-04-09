@@ -47,10 +47,23 @@ export default function LumivIADashboard() {
   const isHomeOrTransitioning = activeTab === "home" || isTransitioning
   const showGlobeLayer = activeTab === "home" || (activeTab === "mapa" && isTransitioning)
   const usesFullscreenCanvas = activeTab === "home" || activeTab === "mapa" || isTransitioning
+  const showNavbar = activeTab !== "mapa" && !isTransitioning
+  const showMapBackButton = activeTab === "mapa" || isTransitioning
 
   return (
     <div className="min-h-screen bg-[#060a14]">
-      <Navbar activeTab={activeTab} onTabChange={handleTabChange} />
+      {showNavbar && <Navbar activeTab={activeTab} onTabChange={handleTabChange} />}
+      {showMapBackButton && (
+        <button
+          onClick={() => handleTabChange("home")}
+          className="fixed left-3 top-3 z-[80] rounded-full border border-[#1e293b] bg-[#060a14]/90 px-4 py-2 text-sm backdrop-blur-xl transition-opacity hover:opacity-85"
+        >
+          <span className="font-display text-base tracking-wider">
+            <span className="text-white">Lumiv</span>
+            <span className="text-[#00d4aa]">IA</span>
+          </span>
+        </button>
+      )}
 
       <main
         className={
