@@ -957,7 +957,7 @@ export default function TrafficFlowMap({
     // Iniciar nuevo modo
     if (isSimulation) {
       // Modo simulación: generar eventos aleatorios
-      console.log('🔬 Activando modo SIMULACIÓN');
+      console.log('🔬 Activando modo interno');
       simIntervalRef.current = setInterval(generarEventos, 1200);
     } else {
       // Modo real: conectar WebSocket STOMP

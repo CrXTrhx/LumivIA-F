@@ -21,7 +21,6 @@ import {
   type DriverRecord,
   type DriverStatus,
   type RegisterDriverInput,
-  type RouteKey,
   updateDriverStatus,
 } from "@/lib/drivers"
 
@@ -61,8 +60,8 @@ export default function LumivIADashboard() {
     setDrivers((prev) => [createDriverRecord(payload, prev), ...prev])
   }
 
-  const handleAssignDriverRoute = (driverId: string, routeKey: RouteKey, routeDateISO: string) => {
-    setDrivers((prev) => prev.map((driver) => (driver.id === driverId ? assignRouteToDriver(driver, routeKey, routeDateISO) : driver)))
+  const handleAssignDriverRoute = (driverId: string, routeId: string, routeDateISO: string) => {
+    setDrivers((prev) => prev.map((driver) => (driver.id === driverId ? assignRouteToDriver(driver, routeId, routeDateISO) : driver)))
   }
 
   const handleDriverStatus = (driverId: string, status: DriverStatus) => {

@@ -1,46 +1,40 @@
-"use client"
+﻿"use client"
 
 import { useMemo, useState } from "react"
 import { Award, CalendarDays, Gift, IdCard, MapPin, Phone, Plus, ShieldCheck, Star, Truck } from "lucide-react"
 import {
   getTodayISODate,
-  ROUTE_DETAILS,
+  ROUTE_TEMPLATES,
+  ROUTE_TEMPLATE_BY_ID,
   type DriverRecord,
   type DriverStatus,
   type RegisterDriverInput,
-  type RouteKey,
 } from "@/lib/drivers"
 
 interface DriversSectionProps {
   drivers: DriverRecord[]
   onCreateDriver: (payload: RegisterDriverInput) => void
-  onAssignRoute: (driverId: string, routeKey: RouteKey, routeDateISO: string) => void
+  onAssignRoute: (driverId: string, routeId: string, routeDateISO: string) => void
   onUpdateDriverStatus: (driverId: string, status: DriverStatus) => void
 }
 
-const routeOptions: Array<{ key: RouteKey; label: string }> = [
-  { key: "safe", label: "Ruta segura" },
-  { key: "traditional", label: "Ruta tradicional" },
-  { key: "express", label: "Ruta express" },
-]
-
 const statusLabel: Record<DriverStatus, string> = {
-  assigned: "Asignado",
-  in_progress: "En ruta",
-  completed: "Completado",
+  pendiente: "Pendiente",
+  en_curso: "En curso",
+  completada: "Completada",
 }
 
 const statusStyle: Record<DriverStatus, string> = {
-  assigned: "text-amber-200 bg-amber-500/15 border-amber-400/35",
-  in_progress: "text-cyan-200 bg-cyan-500/15 border-cyan-400/35",
-  completed: "text-emerald-200 bg-emerald-500/15 border-emerald-400/35",
+  pendiente: "text-amber-200 bg-amber-500/15 border-amber-400/35",
+  en_curso: "text-cyan-200 bg-cyan-500/15 border-cyan-400/35",
+  completada: "text-emerald-200 bg-emerald-500/15 border-emerald-400/35",
 }
 
 interface DriverFormState {
   fullName: string
   licenseNumber: string
   phone: string
-  routeKey: RouteKey
+  routeId: string
   routeDateISO: string
 }
 
@@ -48,14 +42,22 @@ const initialForm: DriverFormState = {
   fullName: "",
   licenseNumber: "",
   phone: "",
-  routeKey: "safe",
+  routeId: ROUTE_TEMPLATES[0]?.id ?? "rt-01",
   routeDateISO: getTodayISODate(),
 }
 
-function routeBadgeClasses(routeKey: RouteKey): string {
-  if (routeKey === "safe") return "text-cyan-200 bg-cyan-500/15 border-cyan-400/35"
-  if (routeKey === "traditional") return "text-slate-200 bg-slate-500/15 border-slate-400/35"
-  return "text-emerald-200 bg-emerald-500/15 border-emerald-400/35"
+function routeBadgeClasses(routeId: string): string {
+  const route = ROUTE_TEMPLATE_BY_ID[routeId]
+  if (!route) return "text-slate-200 bg-slate-500/15 border-slate-400/35"
+  return "text-slate-100 border-slate-300/35"
+}
+
+function routeLabel(routeId: string): string {
+  return ROUTE_TEMPLATE_BY_ID[routeId]?.label ?? "Ruta"
+}
+
+function routeDescription(routeId: string): string {
+  return ROUTE_TEMPLATE_BY_ID[routeId]?.description ?? "Ruta operativa"
 }
 
 function formatMXN(value: number): string {
@@ -78,18 +80,12 @@ export function DriversSection({ drivers, onCreateDriver, onAssignRoute, onUpdat
     [drivers, selectedDriverId],
   )
 
-  const groupedByRoute = useMemo(() => {
-    return {
-      safe: drivers.filter((driver) => driver.routeKey === "safe").length,
-      traditional: drivers.filter((driver) => driver.routeKey === "traditional").length,
-      express: drivers.filter((driver) => driver.routeKey === "express").length,
-    }
-  }, [drivers])
-
   const activeToday = useMemo(
-    () => drivers.filter((driver) => driver.routeDateISO === getTodayISODate() && driver.status !== "completed").length,
+    () => drivers.filter((driver) => driver.routeDateISO === getTodayISODate() && driver.status !== "completada").length,
     [drivers],
   )
+
+  const activeInCourse = useMemo(() => drivers.filter((driver) => driver.status === "en_curso").length, [drivers])
 
   const handleSubmit = () => {
     if (!form.fullName.trim() || !form.licenseNumber.trim() || !form.phone.trim()) return
@@ -98,7 +94,7 @@ export function DriversSection({ drivers, onCreateDriver, onAssignRoute, onUpdat
       fullName: form.fullName,
       licenseNumber: form.licenseNumber,
       phone: form.phone,
-      routeKey: form.routeKey,
+      routeId: form.routeId,
       routeDateISO: form.routeDateISO,
     })
 
@@ -118,9 +114,7 @@ export function DriversSection({ drivers, onCreateDriver, onAssignRoute, onUpdat
         <header className="glass-card-strong mb-4 rounded-2xl p-4 sm:p-5">
           <p className="text-xs uppercase tracking-[0.35em] text-slate-400">Gestión operativa</p>
           <h1 className="font-display mt-1 text-2xl tracking-[0.14em] text-slate-100 md:text-3xl">CONDUCTORES Y RUTAS</h1>
-          <p className="mt-2 text-sm text-slate-300">
-            Registra conductores, asigna rutas del día y conecta su operación con el mapa del dashboard.
-          </p>
+          <p className="mt-2 text-sm text-slate-300">Registra conductores, asigna una de las 15 rutas definidas y conecta su operación con el dashboard.</p>
           <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
             <article className="glass-card rounded-xl border-0 p-3">
               <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Total conductores</p>
@@ -131,8 +125,8 @@ export function DriversSection({ drivers, onCreateDriver, onAssignRoute, onUpdat
               <p className="mt-1 text-2xl text-cyan-200">{activeToday}</p>
             </article>
             <article className="glass-card rounded-xl border-0 p-3">
-              <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Rutas seguras</p>
-              <p className="mt-1 text-2xl text-cyan-200">{groupedByRoute.safe}</p>
+              <p className="text-xs uppercase tracking-[0.24em] text-slate-400">En curso</p>
+              <p className="mt-1 text-2xl text-cyan-200">{activeInCourse}</p>
             </article>
             <article className="glass-card rounded-xl border-0 p-3">
               <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Bonos acreditados</p>
@@ -145,7 +139,7 @@ export function DriversSection({ drivers, onCreateDriver, onAssignRoute, onUpdat
           <main className="min-w-0 space-y-4">
             <section className="glass-card rounded-2xl p-3 sm:p-4">
               <h2 className="font-display text-lg tracking-[0.12em] text-slate-100">Alta de conductor</h2>
-              <p className="mt-1 text-xs text-slate-400">Cada nuevo conductor se refleja automáticamente en la flota del dashboard.</p>
+              <p className="mt-1 text-xs text-slate-400">Cada conductor nuevo se agrega al dashboard cuando su estado esté en curso.</p>
 
               <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
                 <label className="space-y-1 text-xs text-slate-400">
@@ -179,14 +173,14 @@ export function DriversSection({ drivers, onCreateDriver, onAssignRoute, onUpdat
                 </label>
 
                 <label className="space-y-1 text-xs text-slate-400">
-                  Ruta diaria
+                  Ruta diaria (15 predefinidas)
                   <select
-                    value={form.routeKey}
-                    onChange={(event) => setForm((prev) => ({ ...prev, routeKey: event.target.value as RouteKey }))}
+                    value={form.routeId}
+                    onChange={(event) => setForm((prev) => ({ ...prev, routeId: event.target.value }))}
                     className="glass-card w-full rounded-lg border border-slate-700/60 px-3 py-2 text-sm text-slate-100 outline-none focus:border-cyan-400"
                   >
-                    {routeOptions.map((route) => (
-                      <option key={route.key} value={route.key} className="bg-slate-900 text-slate-100">
+                    {ROUTE_TEMPLATES.map((route) => (
+                      <option key={route.id} value={route.id} className="bg-slate-900 text-slate-100">
                         {route.label}
                       </option>
                     ))}
@@ -221,13 +215,11 @@ export function DriversSection({ drivers, onCreateDriver, onAssignRoute, onUpdat
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-slate-100">{driver.fullName}</p>
-                        <p className="text-xs text-slate-400">
-                          {driver.code} · Lic. {driver.licenseNumber}
-                        </p>
+                        <p className="text-xs text-slate-400">{driver.code} · Lic. {driver.licenseNumber}</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <span className={`rounded-full border px-2 py-0.5 text-xs ${routeBadgeClasses(driver.routeKey)}`}>
-                          {ROUTE_DETAILS[driver.routeKey].label}
+                        <span className={`rounded-full border px-2 py-0.5 text-xs ${routeBadgeClasses(driver.routeId)}`}>
+                          {routeLabel(driver.routeId)}
                         </span>
                         <span className={`rounded-full border px-2 py-0.5 text-xs ${statusStyle[driver.status]}`}>
                           {statusLabel[driver.status]}
@@ -239,14 +231,12 @@ export function DriversSection({ drivers, onCreateDriver, onAssignRoute, onUpdat
                       <label className="space-y-1 text-xs text-slate-500">
                         Reasignar ruta
                         <select
-                          value={driver.routeKey}
-                          onChange={(event) => onAssignRoute(driver.id, event.target.value as RouteKey, driver.routeDateISO)}
+                          value={driver.routeId}
+                          onChange={(event) => onAssignRoute(driver.id, event.target.value, driver.routeDateISO)}
                           className="glass-card w-full rounded-lg border border-slate-700/60 px-2.5 py-2 text-xs text-slate-100 outline-none focus:border-cyan-400"
                         >
-                          {routeOptions.map((route) => (
-                            <option key={route.key} value={route.key} className="bg-slate-900 text-slate-100">
-                              {route.label}
-                            </option>
+                          {ROUTE_TEMPLATES.map((route) => (
+                            <option key={route.id} value={route.id} className="bg-slate-900 text-slate-100">{route.label}</option>
                           ))}
                         </select>
                       </label>
@@ -258,9 +248,9 @@ export function DriversSection({ drivers, onCreateDriver, onAssignRoute, onUpdat
                           onChange={(event) => onUpdateDriverStatus(driver.id, event.target.value as DriverStatus)}
                           className="glass-card w-full rounded-lg border border-slate-700/60 px-2.5 py-2 text-xs text-slate-100 outline-none focus:border-cyan-400"
                         >
-                          <option value="assigned" className="bg-slate-900 text-slate-100">Asignado</option>
-                          <option value="in_progress" className="bg-slate-900 text-slate-100">En ruta</option>
-                          <option value="completed" className="bg-slate-900 text-slate-100">Completado</option>
+                          <option value="pendiente" className="bg-slate-900 text-slate-100">Pendiente</option>
+                          <option value="en_curso" className="bg-slate-900 text-slate-100">En curso</option>
+                          <option value="completada" className="bg-slate-900 text-slate-100">Completada</option>
                         </select>
                       </label>
                     </div>
@@ -291,8 +281,8 @@ export function DriversSection({ drivers, onCreateDriver, onAssignRoute, onUpdat
                         <p className="text-base font-semibold text-slate-100">{selectedDriver.fullName}</p>
                         <p className="text-xs text-slate-400">{selectedDriver.code}</p>
                       </div>
-                      <span className={`rounded-full border px-2 py-0.5 text-xs ${routeBadgeClasses(selectedDriver.routeKey)}`}>
-                        {ROUTE_DETAILS[selectedDriver.routeKey].label}
+                      <span className={`rounded-full border px-2 py-0.5 text-xs ${routeBadgeClasses(selectedDriver.routeId)}`}>
+                        {routeLabel(selectedDriver.routeId)}
                       </span>
                     </div>
 
@@ -300,7 +290,7 @@ export function DriversSection({ drivers, onCreateDriver, onAssignRoute, onUpdat
                       <p className="flex items-center gap-2"><IdCard className="h-3.5 w-3.5 text-slate-400" /> Licencia: {selectedDriver.licenseNumber}</p>
                       <p className="flex items-center gap-2"><Phone className="h-3.5 w-3.5 text-slate-400" /> Contacto: {selectedDriver.phone}</p>
                       <p className="flex items-center gap-2"><CalendarDays className="h-3.5 w-3.5 text-slate-400" /> Ruta del día: {selectedDriver.routeDateISO}</p>
-                      <p className="flex items-center gap-2"><MapPin className="h-3.5 w-3.5 text-slate-400" /> {ROUTE_DETAILS[selectedDriver.routeKey].description}</p>
+                      <p className="flex items-center gap-2"><MapPin className="h-3.5 w-3.5 text-slate-400" /> {routeDescription(selectedDriver.routeId)}</p>
                       <p className="flex items-center gap-2"><Truck className="h-3.5 w-3.5 text-slate-400" /> Estado: {statusLabel[selectedDriver.status]}</p>
                     </div>
                   </article>
@@ -349,9 +339,7 @@ export function DriversSection({ drivers, onCreateDriver, onAssignRoute, onUpdat
                         <div key={entry.id} className="rounded-lg border border-slate-700/70 bg-slate-900/35 p-2.5 text-xs">
                           <p className="flex items-center justify-between text-slate-200">
                             <span>{entry.dateISO}</span>
-                            <span className={`rounded-full border px-2 py-0.5 ${routeBadgeClasses(entry.routeKey)}`}>
-                              {ROUTE_DETAILS[entry.routeKey].label}
-                            </span>
+                            <span className={`rounded-full border px-2 py-0.5 ${routeBadgeClasses(entry.routeId)}`}>{routeLabel(entry.routeId)}</span>
                           </p>
                           <p className="mt-1 flex items-center gap-2 text-slate-400">
                             <ShieldCheck className="h-3.5 w-3.5" />

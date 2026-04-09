@@ -12,7 +12,6 @@ export default function FlowControls({
   weatherInfo,
   forceRain,
   onForceRainChange,
-  isSimulation,
   mapTheme = 'dark',
 }) {
   const [isMobile, setIsMobile] = useState(false);
@@ -116,24 +115,6 @@ export default function FlowControls({
     color: isLight ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.6)',
   };
 
-  const modeIndicatorStyle = {
-    marginTop: 10,
-    padding: '6px 8px',
-    background: isSimulation 
-      ? 'rgba(255,180,0,0.1)'
-      : 'rgba(0,200,150,0.1)',
-    borderRadius: 4,
-    fontSize: 9,
-    fontFamily: 'Inter, system-ui, sans-serif',
-    color: isSimulation 
-      ? (isLight ? '#B8860B' : '#FFD700')
-      : (isLight ? '#0d9488' : '#2DD4BF'),
-    textAlign: 'center',
-    fontWeight: 600,
-    letterSpacing: '0.05em',
-    textTransform: 'uppercase',
-  };
-
   // Convertir grados a dirección cardinal
   const getWindDirection = (deg) => {
     const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
@@ -155,9 +136,6 @@ export default function FlowControls({
               <div style={toggleKnobStyle(trafficMode)} />
             </div>
             <span style={optionTextStyle(trafficMode)}>Sentido vial</span>
-          </div>
-          <div style={modeIndicatorStyle}>
-            {isSimulation ? 'Simulación' : 'Datos Reales'}
           </div>
         </div>
       )}
@@ -190,9 +168,6 @@ export default function FlowControls({
             </div>
           )}
           
-          <div style={modeIndicatorStyle}>
-            {isSimulation ? 'Simulación' : 'Datos Reales'}
-          </div>
         </div>
       )}
 
@@ -293,9 +268,6 @@ export default function FlowControls({
             </div>
           )}
           
-          <div style={modeIndicatorStyle}>
-            {isSimulation ? 'Simulación' : 'Datos Reales'}
-          </div>
         </div>
       )}
     </div>
