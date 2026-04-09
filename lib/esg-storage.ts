@@ -4,7 +4,8 @@ export interface EsgReportRecord {
   id: string
   name: string
   createdAtISO: string
-  pdfDataUri: string
+  pdfBlob?: Blob
+  pdfDataUri?: string
 }
 
 const REPORTS_STORAGE_KEY = "reports"
