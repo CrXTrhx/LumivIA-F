@@ -255,6 +255,21 @@ export function DriversSection({ drivers, onCreateDriver, onAssignRoute, onUpdat
                       </label>
                     </div>
 
+                    {!!driver.assignments?.length && (
+                      <div className="mt-2 rounded-lg border border-slate-700/60 bg-slate-900/30 p-2 text-[11px] text-slate-300">
+                        {driver.assignments
+                          .slice()
+                          .sort((a, b) => a.routeDateISO.localeCompare(b.routeDateISO))
+                          .slice(0, 4)
+                          .map((assignment) => (
+                            <div key={assignment.id} className="flex items-center justify-between py-0.5">
+                              <span>{routeLabel(assignment.routeId)} · {assignment.routeDateISO}</span>
+                              <span className="uppercase tracking-[0.04em] text-slate-400">{assignment.status.replace('_', ' ')}</span>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+
                     <button
                       type="button"
                       onClick={() => setSelectedDriverId(driver.id)}

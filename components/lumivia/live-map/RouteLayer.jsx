@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { convertFloodDataToExcludePolygons } from './utils/floodToPolygons';
 import { validateMultipleRoutes, getValidationSummary } from './utils/routeFloodValidator';
+import { ROUTE_TEMPLATE_BY_ID } from '@/lib/drivers';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CONSTANTS
@@ -649,7 +650,14 @@ function updateProgressiveLayers(map, routeCoords, currentIndex) {
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export default function RouteLayer({ map, activeLayer, isSimulation = true, floodData = null }) {
+export default function RouteLayer({
+  map,
+  activeLayer,
+  isSimulation = true,
+  floodData = null,
+  drivers = [],
+  onAssignmentStatusChange,
+}) {
   // Responsive state
   const [isMobile, setIsMobile] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
@@ -667,16 +675,49 @@ export default function RouteLayer({ map, activeLayer, isSimulation = true, floo
   const [instruccionIndex, setInstruccionIndex] = useState(0);
   const [progreso, setProgreso] = useState({ distancia: 0, tiempo: 0 });
   const [haLlegado, setHaLlegado] = useState(false);
+  const [licenseInput, setLicenseInput] = useState('');
+  const [selectedLicense, setSelectedLicense] = useState(null);
+  const [driverLookupError, setDriverLookupError] = useState(null);
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState(null);
   
   // Refs
   const geolocateControlRef = useRef(null);
   const markersRef = useRef({ destino: null });
   const rutasCargadasRef = useRef(false);
   const simIndexRef = useRef(0);
+  const assignmentInProgressRef = useRef(null);
   
   const isActive = activeLayer === 'routes';
   const hasPersistentRoute = Boolean(rutaAsignada);
   const shouldKeepGpsTracking = isActive || hasPersistentRoute || modo === 'navegando' || modo === 'finalizado';
+
+  const selectedDriver = drivers.find((driver) =>
+    selectedLicense ? driver.licenseNumber.trim().toUpperCase() === selectedLicense : false
+  ) || null;
+
+  const sortedAssignments = selectedDriver
+    ? [...(selectedDriver.assignments || [])].sort((a, b) => {
+        const dateDiff = a.routeDateISO.localeCompare(b.routeDateISO);
+        if (dateDiff !== 0) return dateDiff;
+        const order = { en_curso: 0, pendiente: 1, completada: 2 };
+        return order[a.status] - order[b.status];
+      })
+    : [];
+
+  const assignmentToRun =
+    sortedAssignments.find((item) => item.status === 'en_curso') ||
+    sortedAssignments.find((item) => item.status === 'pendiente') ||
+    null;
+
+  useEffect(() => {
+    if (!selectedDriver) {
+      setSelectedAssignmentId(null);
+      return;
+    }
+
+    if (selectedAssignmentId && sortedAssignments.some((item) => item.id === selectedAssignmentId)) return;
+    setSelectedAssignmentId(assignmentToRun?.id || sortedAssignments[0]?.id || null);
+  }, [selectedDriver, sortedAssignments, selectedAssignmentId, assignmentToRun]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // MOBILE DETECTION
@@ -752,14 +793,24 @@ export default function RouteLayer({ map, activeLayer, isSimulation = true, floo
 
   useEffect(() => {
     if (!map || !isActive || !ubicacionUsuario || rutasCargadasRef.current) return;
+    if (!selectedDriver || !selectedAssignmentId) return;
     if (!floodData) return;
     if (floodData?.loading) return;
     
     const cargarRuta = async () => {
       rutasCargadasRef.current = true;
       
-      // Select random destination for simulation
-      const destinoRandom = DESTINOS_SIMULADOS[Math.floor(Math.random() * DESTINOS_SIMULADOS.length)];
+      const activeAssignment = sortedAssignments.find((item) => item.id === selectedAssignmentId);
+      if (!activeAssignment) {
+        rutasCargadasRef.current = false;
+        return;
+      }
+
+      const routeTemplate = ROUTE_TEMPLATE_BY_ID[activeAssignment.routeId];
+      const finalWaypoint = routeTemplate?.waypoints?.[routeTemplate.waypoints.length - 1];
+      const destinoRandom = finalWaypoint
+        ? { nombre: routeTemplate.label, coordenadas: finalWaypoint }
+        : DESTINOS_SIMULADOS[Math.floor(Math.random() * DESTINOS_SIMULADOS.length)];
       setDestinoSimulado(destinoRandom);
       
       try {
@@ -868,7 +919,7 @@ export default function RouteLayer({ map, activeLayer, isSimulation = true, floo
     };
     
     cargarRuta();
-  }, [map, isActive, ubicacionUsuario, isSimulation, floodData]);
+  }, [map, isActive, ubicacionUsuario, isSimulation, floodData, selectedDriver, selectedAssignmentId, sortedAssignments]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // NAVIGATION LOGIC
@@ -876,6 +927,16 @@ export default function RouteLayer({ map, activeLayer, isSimulation = true, floo
 
   const iniciarNavegacion = useCallback(() => {
     if (!rutaAsignada || !map) return;
+
+    const assignment = assignmentToRun || null;
+    if (!assignment || !selectedDriver) return;
+
+    setSelectedAssignmentId(assignment.id);
+
+    assignmentInProgressRef.current = assignment.id;
+    if (assignment.status !== 'en_curso') {
+      onAssignmentStatusChange?.(selectedDriver.id, assignment.id, 'en_curso');
+    }
     
     setModo('navegando');
     setHaLlegado(false);
@@ -928,7 +989,7 @@ export default function RouteLayer({ map, activeLayer, isSimulation = true, floo
         padding: { bottom: window.innerHeight * 0.35 }, // Usuario en tercio inferior
       });
     }
-  }, [rutaAsignada, map, ubicacionUsuario]);
+  }, [rutaAsignada, map, ubicacionUsuario, selectedDriver, assignmentToRun, onAssignmentStatusChange]);
 
   // Update navigation based on user position
   useEffect(() => {
@@ -940,6 +1001,9 @@ export default function RouteLayer({ map, activeLayer, isSimulation = true, floo
     // Check if arrived
     const distToDestino = haversineDistance(ubicacionUsuario, destino);
     if (distToDestino < 30) {
+      if (selectedDriver && assignmentInProgressRef.current) {
+        onAssignmentStatusChange?.(selectedDriver.id, assignmentInProgressRef.current, 'completada');
+      }
       setHaLlegado(true);
       setModo('finalizado');
       setInstruccionActual({
@@ -1012,7 +1076,7 @@ export default function RouteLayer({ map, activeLayer, isSimulation = true, floo
         padding: { bottom: window.innerHeight * 0.35 },
       });
     }
-  }, [ubicacionUsuario, modo, rutaAsignada, instrucciones, instruccionIndex, map, destinoSimulado]);
+  }, [ubicacionUsuario, modo, rutaAsignada, instrucciones, instruccionIndex, map, destinoSimulado, selectedDriver, onAssignmentStatusChange]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // CANCEL / FINISH NAVIGATION
@@ -1251,6 +1315,58 @@ export default function RouteLayer({ map, activeLayer, isSimulation = true, floo
   // ═══════════════════════════════════════════════════════════════════════════════
 
   if (modo === 'cargando') {
+    if (!selectedDriver) {
+      return (
+        <div style={{ ...previewPanelStyle, padding: 20 }}>
+          <div style={headerStyle}>INGRESA LICENCIA</div>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', marginBottom: 10 }}>
+            Consulta tus rutas asignadas y su estatus.
+          </div>
+          <input
+            value={licenseInput}
+            onChange={(e) => {
+              setLicenseInput(e.target.value.toUpperCase());
+              setDriverLookupError(null);
+            }}
+            placeholder="Ej. CDMX-A23-1987"
+            style={{
+              width: '100%',
+              padding: '10px 12px',
+              borderRadius: 10,
+              border: '1px solid rgba(255,255,255,0.15)',
+              background: 'rgba(255,255,255,0.04)',
+              color: 'rgba(255,255,255,0.9)',
+              fontSize: 13,
+              outline: 'none',
+            }}
+          />
+          {driverLookupError && (
+            <div style={{ marginTop: 8, fontSize: 11, color: '#FCA5A5' }}>{driverLookupError}</div>
+          )}
+          <button
+            type="button"
+            style={{ ...buttonPrimaryStyle, marginTop: 12 }}
+            onClick={() => {
+              const normalized = licenseInput.trim().toUpperCase();
+              if (!normalized) {
+                setDriverLookupError('Captura un número de licencia válido.');
+                return;
+              }
+              const found = drivers.find((driver) => driver.licenseNumber.trim().toUpperCase() === normalized);
+              if (!found) {
+                setDriverLookupError('No encontramos rutas para esta licencia.');
+                return;
+              }
+              setSelectedLicense(normalized);
+              setUbicacionError(null);
+            }}
+          >
+            CONTINUAR
+          </button>
+        </div>
+      );
+    }
+
     return (
       <div style={{ ...previewPanelStyle, padding: 20 }}>
         <div style={headerStyle}>RUTA ASIGNADA</div>
@@ -1277,6 +1393,66 @@ export default function RouteLayer({ map, activeLayer, isSimulation = true, floo
   // ═══════════════════════════════════════════════════════════════════════════════
 
   if (modo === 'preview' && rutaAsignada) {
+    if (selectedDriver && sortedAssignments.length) {
+      return (
+        <div style={previewPanelStyle}>
+          <div
+            style={{
+              padding: '16px 20px',
+              borderBottom: '1px solid rgba(255,255,255,0.06)',
+            }}
+          >
+            <div style={headerStyle}>RUTAS DE {selectedDriver.fullName.toUpperCase()}</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>Licencia {selectedDriver.licenseNumber}</div>
+          </div>
+
+          <div style={{ maxHeight: isMobile ? '52vh' : 320, overflowY: 'auto' }}>
+            {sortedAssignments.map((assignment) => {
+              const route = ROUTE_TEMPLATE_BY_ID[assignment.routeId];
+              const isRecommended = assignmentToRun?.id === assignment.id;
+              const isCurrent = selectedAssignmentId === assignment.id;
+              const statusColor =
+                assignment.status === 'en_curso' ? '#22d3ee' : assignment.status === 'pendiente' ? '#fbbf24' : '#10b981';
+              return (
+                <button
+                  key={assignment.id}
+                  type="button"
+                  onClick={() => setSelectedAssignmentId(assignment.id)}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    border: 'none',
+                    borderBottom: '1px solid rgba(255,255,255,0.05)',
+                    background: isCurrent ? 'rgba(34,197,94,0.12)' : 'transparent',
+                    color: 'inherit',
+                    padding: '12px 16px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{route?.label || assignment.routeId}</div>
+                    <span style={{ fontSize: 10, color: statusColor, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                      {assignment.status.replace('_', ' ')}
+                    </span>
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 11, color: 'rgba(255,255,255,0.55)' }}>
+                    Cobertura: {assignment.routeDateISO}
+                    {isRecommended ? ' · Prioridad actual' : ''}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={{ padding: 16 }}>
+            <button type="button" style={buttonPrimaryStyle} onClick={iniciarNavegacion}>
+              INICIAR RUTA PRIORITARIA
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     const { ruta_saludable, ruta_rapida, ahorro_co2, tiempo_extra_min } = rutaAsignada;
     const validacionSaludable = ruta_saludable.floodValidation;
     const zonasEvitadas = validacionSaludable?.zonesEvaded || rutaAsignada.floodStatus?.zonasEvitadas || 0;

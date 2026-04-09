@@ -18,6 +18,7 @@ import {
   DRIVERS_STORAGE_KEY,
   INITIAL_DRIVERS,
   parseStoredDrivers,
+  setAssignmentStatus,
   type DriverRecord,
   type DriverStatus,
   type RegisterDriverInput,
@@ -66,6 +67,12 @@ export default function LumivIADashboard() {
 
   const handleDriverStatus = (driverId: string, status: DriverStatus) => {
     setDrivers((prev) => prev.map((driver) => (driver.id === driverId ? updateDriverStatus(driver, status) : driver)))
+  }
+
+  const handleAssignmentStatus = (driverId: string, assignmentId: string, status: DriverStatus) => {
+    setDrivers((prev) =>
+      prev.map((driver) => (driver.id === driverId ? setAssignmentStatus(driver, assignmentId, status) : driver)),
+    )
   }
 
   const handleTabChange = (tab: Tab) => {
@@ -155,7 +162,12 @@ export default function LumivIADashboard() {
               transition: "opacity 820ms cubic-bezier(0.22, 1, 0.36, 1), filter 820ms cubic-bezier(0.22, 1, 0.36, 1), transform 820ms cubic-bezier(0.22, 1, 0.36, 1)",
             }}
           >
-            <MapSection triggerFlyTo={isTransitioning} />
+            <MapSection
+              triggerFlyTo={isTransitioning}
+              drivers={drivers}
+              onDriverStatusChange={handleDriverStatus}
+              onAssignmentStatusChange={handleAssignmentStatus}
+            />
           </div>
         )}
 
